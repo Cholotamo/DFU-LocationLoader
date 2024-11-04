@@ -26,6 +26,7 @@ namespace LocationLoader
 
             // It's okay if other mods override us, they better provide a compatibility patch though
             DaggerfallUnity.Instance.TerrainNature = new LocationTerrainNature();
+            DaggerfallUnity.Instance.TerrainTexturing = new LocationTerrainTexturing();
 
             const int ladderModelId = 41409;
             PlayerActivate.RegisterCustomActivation(mod, ladderModelId, OnLadderActivated);
@@ -38,14 +39,8 @@ namespace LocationLoader
             {
                 case "getTerrainLocationInstanceRects":
                     var mapPixelCoord = (Vector2Int)data;
-                    if (!ll.TryGetTerrainExtraData(mapPixelCoord, out LocationLoader.LLTerrainData extraData))
-                    {
-                        Debug.LogError($"[LL] Call to 'getTerrainLocationInstanceRects' failed: terrain at ({mapPixelCoord.x}, {mapPixelCoord.y}) is not loaded");
-                        callback(message, null);
-                    }
-
+                    LocationLoader.LLTerrainData extraData = ll.GetTerrainExtraData(mapPixelCoord);
                     callback(message, new List<Rect>(extraData.LocationInstanceRects));
-
                     break;
             }
         }

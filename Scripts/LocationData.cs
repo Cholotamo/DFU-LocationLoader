@@ -9,13 +9,20 @@ namespace LocationLoader
     [System.Serializable]
     public class LocationObject
     {
-        public int type = 0; //0 == Mesh, 1 == Billboard, 2 == Editor
+        public int type = 0;
         public string name = "";
         public int objectID = 0;
         public string extraData = ""; // Data specific to a given object type and name
         public Vector3 pos = Vector3.zero;
         public Quaternion rot = Quaternion.Euler(0, 0, 0);
         public Vector3 scale = new Vector3(1, 1, 1);
+
+        public const int TypeMesh = 0;
+        public const int TypeBillboard = 1;
+        public const int TypeEditorMarker = 2;
+        public const int TypeLLPrefab = 3;
+        public const int TypeUnityPrefab = 4;
+        public const int TypeRMB = 5;
     }
 
     /// <summary>

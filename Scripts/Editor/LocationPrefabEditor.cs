@@ -60,7 +60,7 @@ namespace LocationLoader
         bool bReferenceGrid = false;
         bool bSnapToDFUnits = false;
         Vector2 scrollPosition = Vector2.zero, scrollPosition2 = Vector2.zero, scrollPosition3 = Vector2.zero;
-        string[] listModeName = { "3D Model", "Billboard", "Editor", "Interior Parts", "Prefab", "Unity" };
+        string[] listModeName = { "3D Model", "Billboard", "Editor", "Interior Parts", "LL Prefab", "Unity Prefab", "RMB" };
         string[] modelLists = { "All", "Structure", "Clutter", "Dungeon", "Furniture", "Graveyard", "Custom" };
         string[] billboardLists = { "All", "People", "Interior", "Nature", "Lights", "Treasure", "Dungeon", "Corpses", "Custom" };
         string[] partsLists = { "All", "House", "Dungeon Rooms", "Dungeon Corridors", "Dungeon Misc", "Caves", "Dungeon Doors/Exits" };
@@ -77,30 +77,28 @@ namespace LocationLoader
 
         LocationPrefab locationPrefab;
 
-        // Object types
-        // 0 -> DFU model
-        // 1 -> DFU billboard
-        // 2 -> Editor marker
-        // 3 -> Location Loader Prefab
-        // 4 -> Unity Prefab
+        private const int listMode_3dModel = 0;
+        private const int listMode_Billboard = 1;
+        private const int listMode_Editor = 2;
+        private const int listMode_InteriorParts = 3;
+        private const int listMode_LLPrefab = 4;
+        private const int listMode_UnityPrefab = 5;
+        private const int listMode_RMB = 6;
+
         int GetCurrentObjectType()
         {
             switch(listMode)
             {
-                case 0:
-                case 3:
-                    return 0;
-                case 1: return 1;
-                case 2: return 2;
-                case 4: return 3;
-                case 5: return 4;
+                case listMode_3dModel:
+                case listMode_InteriorParts:
+                    return LocationObject.TypeMesh;
+                case listMode_Billboard: return LocationObject.TypeBillboard;
+                case listMode_Editor: return LocationObject.TypeEditorMarker;
+                case listMode_LLPrefab: return LocationObject.TypeLLPrefab;
+                case listMode_UnityPrefab: return LocationObject.TypeUnityPrefab;
+                case listMode_RMB: return LocationObject.TypeRMB;
             }
             throw new Exception("GetCurrentObjectType called with invalid list mode");
-        }
-
-        static bool HasRotation(LocationObject obj)
-        {
-            return LocationHelper.HasRotation(obj);
         }
 
         [MenuItem("Daggerfall Tools/Location Prefab Editor")]
@@ -265,7 +263,7 @@ namespace LocationLoader
 
                     placedObject = null;
                 }
-                
+
                 EditLocationWindow();
             }
             else if (editMode == EditMode.ObjectPicker)
@@ -296,7 +294,7 @@ namespace LocationLoader
 
             return LocationModManager.GetDevModInfo(workingMod);
         }
-        
+
         private void EditLocationWindow()
         {
             float baseX = 0;
@@ -370,7 +368,7 @@ namespace LocationLoader
                 }
 
                 GUI.Box(new Rect(4, baseY + 8, 656, 56), "", lightGrayBG);
-                                
+
                 GUI.Label(new Rect(16, baseY + 16, 64, 16), "Area X:");
                 int previousWidth = locationPrefab.width;
                 locationPrefab.width = EditorGUI.IntSlider(new Rect(90, baseY + 16, 400, 16), previousWidth, 1, maxAreaLength);
@@ -404,7 +402,7 @@ namespace LocationLoader
                             maxAreaLength = parsedMaxAreaLength;
                         }
                     }
-                    
+
                     GUI.changed = false;
                 }
 
@@ -610,11 +608,7 @@ namespace LocationLoader
                             continue;
                         }
 
-                        if (obj.type != 1)
-                        {
-                            obj.pos = sceneObj.transform.localPosition;
-                        }
-                        else
+                        if (obj.type == LocationObject.TypeBillboard)
                         {
                             Vector3 scenePos = sceneObj.transform.localPosition;
 
@@ -622,10 +616,20 @@ namespace LocationLoader
                             float billboardHeight = sceneObj.GetComponent<DaggerfallBillboard>().Summary.Size.y;
                             obj.pos = new Vector3(scenePos.x, scenePos.y - (billboardHeight / 2) * sceneObj.transform.localScale.y, scenePos.z);
                         }
+                        else if (obj.type == LocationObject.TypeRMB)
+                        {
+                            sceneObj.transform.localPosition = SnapToTerrainTile(sceneObj.transform.localPosition);
+                            obj.pos = sceneObj.transform.localPosition;
+                        }
+                        else
+                        {
+                            obj.pos = sceneObj.transform.localPosition;
+                        }
 
-                        if (HasRotation(obj))
+                        if (LocationHelper.HasRotation(obj))
                             obj.rot = sceneObj.transform.rotation;
-                        obj.scale = sceneObj.transform.localScale;
+                        if (LocationHelper.HasScale(obj))
+                           obj.scale = sceneObj.transform.localScale;
 
                         if (Selection.Contains(sceneObj))
                         {
@@ -639,9 +643,10 @@ namespace LocationLoader
                         GUI.Label(new Rect(2, 36, 128, 16), "ID: " + obj.objectID);
 
                         GUI.Label(new Rect(136, 4, 256, 16), "Position : " + obj.pos);
-                        if (HasRotation(obj))
+                        if (LocationHelper.HasRotation(obj))
                             GUI.Label(new Rect(136, 20, 256, 16), "Rotation : " + obj.rot.eulerAngles);
-                        GUI.Label(new Rect(136, 36, 256, 16), "Scale    : " + obj.scale);
+                        if (LocationHelper.HasScale(obj))
+                            GUI.Label(new Rect(136, 36, 256, 16), "Scale    : " + obj.scale);
 
                         GuiDrawExtraData(obj);
 
@@ -891,12 +896,12 @@ namespace LocationLoader
             {
                 maxAreaLength = 128;
             }
-            
+
         }
 
         bool TryGetObjectSet(string setName, string objId, int objType, out string[] objectSet)
         {
-            if(objType == 0)
+            if(objType == LocationObject.TypeMesh)
             {
                 int index = Array.FindIndex(LocationHelper.models, set => set.Name == setName && set.Ids.Contains(objId));
                 if(index != -1)
@@ -912,7 +917,7 @@ namespace LocationLoader
                     return true;
                 }
             }
-            else if(objType == 1)
+            else if(objType == LocationObject.TypeBillboard)
             {
                 int index = Array.FindIndex(LocationHelper.billboards, set => set.Name == setName && set.Ids.Contains(objId));
                 if (index != -1)
@@ -921,7 +926,7 @@ namespace LocationLoader
                     return true;
                 }
             }
-            else if(objType == 2)
+            else if(objType == LocationObject.TypeEditorMarker)
             {
                 objectSet = new string[] { objId };
                 return true;
@@ -944,11 +949,11 @@ namespace LocationLoader
                 GUI.changed = false;
             }
 
-            if (listMode == 0)
+            if (listMode == listMode_3dModel)
                 sublistMode = GUI.SelectionGrid(new Rect(16, 42, modelLists.Length * 100, 16), sublistMode, modelLists, modelLists.Length);
-            else if (listMode == 1)
+            else if (listMode == listMode_Billboard)
                 sublistMode = GUI.SelectionGrid(new Rect(16, 42, billboardLists.Length * 100, 16), sublistMode, billboardLists, billboardLists.Length);
-            else if(listMode == 3)
+            else if(listMode == listMode_InteriorParts)
                 sublistMode = GUI.SelectionGrid(new Rect(16, 42, partsLists.Length * 130, 16), sublistMode, partsLists, partsLists.Length);
 
             if (GUI.changed)
@@ -985,7 +990,7 @@ namespace LocationLoader
 
             GUI.EndScrollView();
 
-            if(listMode == 2)
+            if(listMode == listMode_Editor)
             {
                 // Monster marker
                 if(searchListIDSets[objectPicker][setIndex] == "199.16")
@@ -1086,11 +1091,11 @@ namespace LocationLoader
             if(LocationModManager.IsPackagedMod(modName))
             {
                 AssetBundle bundle = LocationModManager.GetPackagedModBundle(modName);
-                if (bundle == null)
+                if (!bundle)
                     return null;
 
                 GameObject template = bundle.LoadAsset<GameObject>(prefabName);
-                if (template != null)
+                if (template)
                     return template;
             }
             else if(LocationModManager.IsDevMod(modName))
@@ -1100,7 +1105,7 @@ namespace LocationLoader
                 if (!string.IsNullOrEmpty(prefabPath))
                 {
                     GameObject template = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-                    if (template != null)
+                    if (template)
                         return template;
                 }
             }
@@ -1116,7 +1121,7 @@ namespace LocationLoader
                 foreach (ModDependency dependency in modInfo.Dependencies)
                 {
                     GameObject go = LoadModUnityPrefabObjectTemplate(dependency.Name, prefabName);
-                    if (go != null)
+                    if (go)
                         return go;
                 }
             }
@@ -1125,7 +1130,7 @@ namespace LocationLoader
         }
 
         private GameObject LoadUnityPrefabObjectTemplate(string prefabName)
-        {            
+        {
             string prefabPath = LocationModManager.GetDevModAssetPath(workingMod, prefabName);
 
             if (!string.IsNullOrEmpty(prefabPath))
@@ -1141,7 +1146,7 @@ namespace LocationLoader
                 foreach (ModDependency dependency in modInfo.Dependencies)
                 {
                     GameObject template = LoadModUnityPrefabObjectTemplate(dependency.Name, prefabName);
-                    if (template != null)
+                    if (template)
                         return template;
                 }
             }
@@ -1154,7 +1159,67 @@ namespace LocationLoader
             if (!LocationHelper.ValidateValue(locationObject.type, locationObject.name))
                 return null;
 
-            if (locationObject.type == 2)
+            if (locationObject.type == LocationObject.TypeMesh || locationObject.type == LocationObject.TypeBillboard)
+            {
+                var newObject = LocationHelper.LoadStaticObject(locationObject.type, locationObject.name, objectParent,
+                                     locationObject.pos,
+                                     locationObject.rot,
+                                     locationObject.scale, combiner
+                );
+
+                if (newObject)
+                {
+                    // DFU creates an empty object for custom models during Editor time
+                    MeshFilter meshFilter = newObject.GetComponent<MeshFilter>();
+                    if(meshFilter && !meshFilter.sharedMesh)
+                    {
+                        // Recreate the object using the prefab instead
+                        GameObject template = LoadUnityPrefabObjectTemplate(locationObject.name);
+                        if (template)
+                        {
+                            DestroyImmediate(newObject);
+                            newObject = Instantiate(template, objectParent);
+                            newObject.transform.localPosition = locationObject.pos;
+                            newObject.transform.localRotation = locationObject.rot;
+                            newObject.transform.localScale = locationObject.scale;
+                        }
+                    }
+
+                    var billboard = newObject.GetComponent<DaggerfallBillboard>();
+                    if (billboard)
+                    {
+                        float tempY = newObject.transform.position.y;
+                        billboard.AlignToBase();
+                        newObject.transform.position = new Vector3(newObject.transform.position.x, tempY + ((newObject.transform.position.y - tempY) * newObject.transform.localScale.y), newObject.transform.position.z);
+                    }
+
+                    if (locationObject.type == LocationObject.TypeMesh)
+                    {
+                        if (idName.TryGetValue(locationObject.name, out string modelName))
+                        {
+                            newObject.name = modelName;
+                        }
+                        else
+                        {
+                            newObject.name = locationObject.name;
+                        }
+                    }
+                    else if (locationObject.type == LocationObject.TypeBillboard)
+                    {
+                        if (idName.TryGetValue(locationObject.name, out string billboardName))
+                        {
+                            newObject.name = billboardName;
+                        }
+                        else
+                        {
+                            newObject.name = locationObject.name;
+                        }
+                    }
+                }
+
+                return newObject;
+            }
+            if (locationObject.type == LocationObject.TypeEditorMarker)
             {
                 string[] arg = locationObject.name.Split('.');
 
@@ -1170,7 +1235,7 @@ namespace LocationLoader
                 }
                 return newObject;
             }
-            else if(locationObject.type == 3)
+            else if(locationObject.type == LocationObject.TypeLLPrefab)
             {
                 var newObject = new GameObject(locationObject.name);
                 newObject.transform.parent = objectParent;
@@ -1190,7 +1255,7 @@ namespace LocationLoader
                         combiner = new ModelCombiner();
                         topPrefab = true;
                     }
-                    
+
                     foreach (LocationObject obj in prefabInfo.obj)
                     {
                         CreateObject(obj, newObject.transform, combiner);
@@ -1208,10 +1273,10 @@ namespace LocationLoader
 
                 return newObject;
             }
-            else if(locationObject.type == 4)
+            else if(locationObject.type == LocationObject.TypeUnityPrefab)
             {
                 GameObject template = LoadUnityPrefabObjectTemplate(locationObject.name);
-                if (template == null)
+                if (!template)
                     return null;
 
                 var newObject = Instantiate(template, objectParent);
@@ -1222,64 +1287,25 @@ namespace LocationLoader
 
                 return newObject;
             }
-            else
+            else if(locationObject.type == LocationObject.TypeRMB)
             {
-                var newObject = LocationHelper.LoadStaticObject(locationObject.type, locationObject.name, objectParent,
-                                     locationObject.pos,
-                                     locationObject.rot,
-                                     locationObject.scale, combiner
-                );
+                var newObject = GameObjectHelper.CreateRMBBlockGameObject(locationObject.name, layoutX: 0, layoutY: 0,
+                    mapId: 0,
+                    locationIndex: 0, addGroundPlane: false);
+                if (!newObject)
+                    return null;
 
-                if (newObject != null)
-                {
-                    // DFU creates an empty object for custom models during Editor time
-                    MeshFilter meshFilter = newObject.GetComponent<MeshFilter>();
-                    if(meshFilter != null && meshFilter.sharedMesh == null)
-                    {
-                        // Recreate the object using the prefab instead
-                        GameObject template = LoadUnityPrefabObjectTemplate(locationObject.name);
-                        if (template != null)
-                        {
-                            DestroyImmediate(newObject);
-                            newObject = Instantiate(template, objectParent);
-                            newObject.transform.localPosition = locationObject.pos;
-                            newObject.transform.localRotation = locationObject.rot;
-                            newObject.transform.localScale = locationObject.scale;
-                        }
-                    }
-
-                    if (newObject.GetComponent<DaggerfallBillboard>())
-                    {
-                        float tempY = newObject.transform.position.y;
-                        newObject.GetComponent<DaggerfallBillboard>().AlignToBase();
-                        newObject.transform.position = new Vector3(newObject.transform.position.x, tempY + ((newObject.transform.position.y - tempY) * newObject.transform.localScale.y), newObject.transform.position.z);
-                    }
-
-                    if (locationObject.type == 0)
-                    {
-                        if (idName.TryGetValue(locationObject.name, out string modelName))
-                        {
-                            newObject.name = modelName;
-                        }
-                        else
-                        {
-                            newObject.name = locationObject.name;
-                        }
-                    }
-                    else if (locationObject.type == 1)
-                    {
-                        if (idName.TryGetValue(locationObject.name, out string billboardName))
-                        {
-                            newObject.name = billboardName;
-                        }
-                        else
-                        {
-                            newObject.name = locationObject.name;
-                        }
-                    }
-                }
+                newObject.transform.parent = objectParent;
+                newObject.transform.localPosition = locationObject.pos;
+                newObject.transform.localRotation = locationObject.rot;
+                newObject.transform.localScale = locationObject.scale;
+                newObject.name = locationObject.name;
 
                 return newObject;
+            }
+            else
+            {
+                throw new RuntimeException($"Invalid object type '{locationObject.type}'");
             }
         }
 
@@ -1443,7 +1469,7 @@ namespace LocationLoader
 
         private void UpdatePreview()
         {
-            if (preview != null)
+            if (preview )
             {
                 DestroyImmediate(preview);
                 preview = null;
@@ -1457,16 +1483,16 @@ namespace LocationLoader
                 previewObject.name = searchListIDSets[objectPicker][setIndex];
 
                 preview = CreateObject(previewObject, null);
-                if (preview != null)
+                if (preview )
                 {
-                    preview.layer = 2; // Ignore raycast 
+                    preview.layer = 2; // Ignore raycast
                     preview.name = "Location Prefab Object Preview";
 
                     var renderer = preview.GetComponent<Renderer>();
-                    if (renderer == null)
+                    if (!renderer)
                         renderer = preview.GetComponentInChildren<Renderer>();
 
-                    if (renderer != null)
+                    if (renderer)
                         SceneView.lastActiveSceneView.Frame(renderer.bounds);
                 }
             }
@@ -1474,12 +1500,12 @@ namespace LocationLoader
 
         private GameObject AddObject(LocationObject locationObject, bool selectNew)
         {
-            GameObject newObject = CreateObject(locationObject, parent.transform);            
+            GameObject newObject = CreateObject(locationObject, parent.transform);
 
-            if (newObject != null)
+            if (newObject)
             {
                 objScene.Add(newObject);
-                
+
                 if (selectNew)
                     Selection.activeGameObject = objScene[objScene.Count - 1];
             }
@@ -1686,7 +1712,7 @@ namespace LocationLoader
             searchListNames.Clear();
             searchListIDSets.Clear();
 
-            if (listMode == 0)
+            if (listMode == listMode_3dModel)
             {
                 switch (sublistMode)
                 {
@@ -1721,7 +1747,7 @@ namespace LocationLoader
                         break;
                 }
             }
-            else if (listMode == 1)
+            else if (listMode == listMode_Billboard)
             {
                 switch (sublistMode)
                 {
@@ -1764,11 +1790,11 @@ namespace LocationLoader
                         break;
                 }
             }
-            else if (listMode == 2)
+            else if (listMode == listMode_Editor)
             {
                 AddNames(LocationHelper.editor);
             }
-            else if (listMode == 3)
+            else if (listMode == listMode_InteriorParts)
             {
                 switch (sublistMode)
                 {
@@ -1801,7 +1827,7 @@ namespace LocationLoader
                         break;
                 }
             }
-            else if(listMode == 4)
+            else if(listMode == listMode_LLPrefab)
             {
                 var prefabs = prefabInfos.Keys.Where(
                     prefab => !string.Equals(prefab, currentPrefabName, StringComparison.OrdinalIgnoreCase)
@@ -1813,7 +1839,7 @@ namespace LocationLoader
                 searchListNames.Sort();
                 searchListIDSets.Sort((set1, set2) => set1[0].CompareTo(set2[0]));
             }
-            else if(listMode == 5)
+            else if(listMode == listMode_UnityPrefab)
             {
                 void GatherModPrefabs(ModInfo modInfo)
                 {
@@ -1852,6 +1878,10 @@ namespace LocationLoader
                 searchListNames.Sort();
                 searchListIDSets.Sort((set1, set2) => set1[0].CompareTo(set2[0]));
             }
+            else if (listMode == listMode_RMB)
+            {
+                AddNames(LocationHelper.rmbs);
+            }
         }
 
         static Regex CsvSplit = new Regex("(?:^|,)(\"(?:\\\\\"|[^\"])*\"|[^,]*)", RegexOptions.Compiled);
@@ -1874,7 +1904,7 @@ namespace LocationLoader
         }
 
         private void OnDisable()
-        {            
+        {
             if(parent != null)
             {
                 Selection.activeObject = null;
@@ -1897,7 +1927,7 @@ namespace LocationLoader
 
         void GuiDrawExtraData(LocationObject obj)
         {
-            if (obj.type == 2)
+            if (obj.type == LocationObject.TypeEditorMarker)
             {
                 switch(obj.name)
                 {
@@ -1907,7 +1937,7 @@ namespace LocationLoader
                         if (enemyExtraData.TeamOverride != 0)
                             GUI.Label(new Rect(300, 24, 256, 16), "Team: " + ((MobileTeams)enemyExtraData.TeamOverride).ToString());
                         break;
-                }                
+                }
             }
         }
 
@@ -1923,6 +1953,20 @@ namespace LocationLoader
                 SnapToDFUnits(v.y),
                 SnapToDFUnits(v.z)
                 );
+        }
+
+        static float SnapToTerrainTile(float f)
+        {
+            return Mathf.Round(f / LocationLoader.TERRAIN_SIZE_MULTI) * LocationLoader.TERRAIN_SIZE_MULTI;
+        }
+
+        static Vector3 SnapToTerrainTile(Vector3 v)
+        {
+            return new Vector3(
+                SnapToTerrainTile(v.x),
+                SnapToTerrainTile(v.y),
+                SnapToTerrainTile(v.z)
+            );
         }
 
         //Gets the size of an object, used mostly so we can put things on the ground or move them based on size.

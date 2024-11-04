@@ -25,8 +25,8 @@ namespace LocationLoader
             public List<LocationData> LocationInstances = new List<LocationData>();
         }
 
-        private ConditionalWeakTable<DaggerfallTerrain, LLTerrainData> terrainExtraData =
-            new ConditionalWeakTable<DaggerfallTerrain, LLTerrainData>();
+        private Dictionary<Vector2Int, LLTerrainData> terrainExtraData =
+            new Dictionary<Vector2Int, LLTerrainData>();
 
         LocationResourceManager resourceManager;
 
@@ -86,8 +86,7 @@ namespace LocationLoader
             // When near an instance, activate it
             var playerGps = game.PlayerGPS;
             var mapPixel = playerGps.CurrentMapPixel;
-            if (!TryGetTerrainExtraData(new Vector2Int(mapPixel.X, mapPixel.Y), out LLTerrainData terrainData))
-                return;
+            LLTerrainData terrainData = GetTerrainExtraData(new Vector2Int(mapPixel.X, mapPixel.Y));
 
             if (terrainData.LocationInstances.Count == 0)
                 return;
@@ -210,15 +209,15 @@ namespace LocationLoader
             return false;
         }
 
-        public bool TryGetTerrainExtraData(Vector2Int worldCoord, out LLTerrainData extraData)
+        public LLTerrainData GetTerrainExtraData(Vector2Int worldCoord)
         {
-            if(TryGetTerrain(worldCoord, out DaggerfallTerrain terrain))
+            if (!terrainExtraData.TryGetValue(worldCoord, out LLTerrainData extraData))
             {
-                return terrainExtraData.TryGetValue(terrain, out extraData);
+                extraData = CreateStaticExtraData(worldCoord);
+                terrainExtraData.Add(worldCoord, extraData);
             }
 
-            extraData = null;
-            return false;
+            return extraData;
         }
 
         void InstantiateInstanceDynamicObjects(LocationData locationData)
@@ -285,7 +284,7 @@ namespace LocationLoader
 
                 GameObject go = null;
 
-                if (obj.type == 1)
+                if (obj.type == LocationObject.TypeBillboard)
                 {
                     go = LocationHelper.LoadStaticObject(
                         obj.type,
@@ -296,121 +295,21 @@ namespace LocationLoader
                         obj.scale
                         );
                 }
-                else if (obj.type == 2)
+                else if (obj.type == LocationObject.TypeEditorMarker)
                 {
-                    string[] arg = obj.name.Split('.');
-
-                    if (arg == null || arg.Length != 2)
-                    {
-                        Debug.LogError($"[LL] Invalid type 2 obj name '{obj.name}' in prefab '{loc.prefab}'");
+                    if (InstantiateEditorMarker(locationData, obj, loc, saveInterface, instance, ref go)) continue;
+                }
+                else if (obj.type == LocationObject.TypeRMB)
+                {
+                    go = GameObjectHelper.CreateRMBBlockGameObject(obj.name, layoutX: 0, layoutY: 0, mapId: 0,
+                        locationIndex: 0, addGroundPlane: false);
+                    if (!go)
                         continue;
-                    }
 
-                    if (arg[0] == "199")
-                    {
-                        switch (arg[1])
-                        {
-                            case "16":
-                                object result = SaveLoadManager.Deserialize(typeof(EnemyMarkerExtraData), obj.extraData);
-                                if(result == null)
-                                {
-                                    Debug.LogError($"[LL] Could not spawn enemy in prefab '{loc.prefab}': invalid extra data");
-                                    continue;
-                                }
-
-                                var extraData = (EnemyMarkerExtraData)result;
-                                if (!Enum.IsDefined(typeof(MobileTypes), extraData.EnemyId) && DaggerfallEntity.GetCustomCareerTemplate(extraData.EnemyId) == null)
-                                {
-                                    Debug.LogError($"[LL] Could not spawn enemy in prefab '{loc.prefab}', unknown mobile type '{extraData.EnemyId}'");
-                                    continue;
-                                }
-
-                                ulong v = (uint)obj.objectID;
-                                ulong loadId = LocationSaveDataInterface.ToObjectLoadId(loc.locationID, obj.objectID);
-
-                                // Enemy is dead, don't spawn anything
-
-                                if (saveInterface.IsEnemyDead(loadId))
-                                {
-                                    break;
-                                }
-
-                                MobileTypes mobileType = (MobileTypes)extraData.EnemyId;
-
-                                go = GameObjectHelper.CreateEnemy(TextManager.Instance.GetLocalizedEnemyName((int)mobileType), mobileType, obj.pos, MobileGender.Unspecified, instance.transform);
-                                if(!go)
-                                {
-                                    Debug.LogError($"[LL] Could not spawn enemy in prefab '{loc.prefab}': GameObject.CreateEnemy returned null");
-                                    continue;
-                                }
-
-                                SerializableEnemy serializable = go.GetComponent<SerializableEnemy>();
-                                if (serializable)
-                                {
-                                    Destroy(serializable);
-                                }
-
-                                DaggerfallEntityBehaviour behaviour = go.GetComponent<DaggerfallEntityBehaviour>();
-                                if(!behaviour)
-                                {
-                                    Debug.LogError($"[LL] Failed to spawn enemy at ({loc.worldX}, {loc.worldY}) on prefab '{loc.prefab}': behaviour was null");
-                                    continue;
-                                }
-
-                                EnemyEntity entity = (EnemyEntity)behaviour.Entity;
-                                if (entity == null)
-                                {
-                                    Debug.LogError($"[LL] Failed to spawn enemy at ({loc.worldX}, {loc.worldY}) on prefab '{loc.prefab}': entity was null");
-                                    continue;
-                                }
-
-                                if (entity.MobileEnemy.Gender == MobileGender.Male)
-                                {
-                                    entity.Gender = Genders.Male;
-                                }
-                                else if (entity.MobileEnemy.Gender == MobileGender.Female)
-                                {
-                                    entity.Gender = Genders.Female;
-                                }
-
-                                if (extraData.TeamOverride != 0 && Enum.IsDefined(typeof(MobileTeams), extraData.TeamOverride))
-                                {
-                                    entity.Team = (MobileTeams)extraData.TeamOverride;
-                                }
-
-                                DaggerfallEnemy enemy = go.GetComponent<DaggerfallEnemy>();
-                                if (!enemy)
-                                {
-                                    Debug.LogError($"[LL] Failed to spawn enemy at ({loc.worldX}, {loc.worldY}) on prefab '{loc.prefab}': no enemy component");
-                                    continue;
-                                }
-
-                                enemy.LoadID = loadId;
-                                var serializer = go.AddComponent<LocationEnemySerializer>();
-
-                                locationData.AddEnemy(serializer);
-
-                                break;
-
-                            case "19":
-                                {
-                                    int iconIndex = UnityEngine.Random.Range(0, DaggerfallLootDataTables.randomTreasureIconIndices.Length);
-                                    int iconRecord = DaggerfallLootDataTables.randomTreasureIconIndices[iconIndex];
-                                    go = LocationHelper.CreateLootContainer(loc.locationID, obj.objectID, 216, iconRecord, instance.transform);
-                                    if (!go)
-                                    {
-                                        Debug.LogError($"[LL] Could not spawn treasure in prefab '{loc.prefab}': LocationHelper.CreateLootContainer returned null");
-                                        continue;
-                                    }
-
-                                    go.transform.localPosition = obj.pos;
-
-                                    locationData.AddLoot(go.GetComponent<LocationLootSerializer>());
-
-                                    break;
-                                }
-                        }
-                    }
+                    go.transform.parent = instance.transform;
+                    go.transform.localPosition = obj.pos;
+                    go.transform.localRotation = obj.rot;
+                    go.transform.localScale = obj.scale;
                 }
 
                 if (go)
@@ -428,6 +327,126 @@ namespace LocationLoader
             }
 
             locationData.HasSpawnedDynamicObjects = true;
+        }
+
+        private static bool InstantiateEditorMarker(LocationData locationData, LocationObject obj, LocationInstance loc,
+            LocationSaveDataInterface saveInterface, GameObject instance, ref GameObject go)
+        {
+            string[] arg = obj.name.Split('.');
+
+            if (arg.Length != 2)
+            {
+                Debug.LogError($"[LL] Invalid type 2 obj name '{obj.name}' in prefab '{loc.prefab}'");
+                return true;
+            }
+
+            if (arg[0] == "199")
+            {
+                switch (arg[1])
+                {
+                    case "16":
+                        object result = SaveLoadManager.Deserialize(typeof(EnemyMarkerExtraData), obj.extraData);
+                        if(result == null)
+                        {
+                            Debug.LogError($"[LL] Could not spawn enemy in prefab '{loc.prefab}': invalid extra data");
+                            return true;
+                        }
+
+                        var extraData = (EnemyMarkerExtraData)result;
+                        if (!Enum.IsDefined(typeof(MobileTypes), extraData.EnemyId) && DaggerfallEntity.GetCustomCareerTemplate(extraData.EnemyId) == null)
+                        {
+                            Debug.LogError($"[LL] Could not spawn enemy in prefab '{loc.prefab}', unknown mobile type '{extraData.EnemyId}'");
+                            return true;
+                        }
+
+                        ulong v = (uint)obj.objectID;
+                        ulong loadId = LocationSaveDataInterface.ToObjectLoadId(loc.locationID, obj.objectID);
+
+                        // Enemy is dead, don't spawn anything
+
+                        if (saveInterface.IsEnemyDead(loadId))
+                        {
+                            break;
+                        }
+
+                        MobileTypes mobileType = (MobileTypes)extraData.EnemyId;
+
+                        go = GameObjectHelper.CreateEnemy(TextManager.Instance.GetLocalizedEnemyName((int)mobileType), mobileType, obj.pos, MobileGender.Unspecified, instance.transform);
+                        if(!go)
+                        {
+                            Debug.LogError($"[LL] Could not spawn enemy in prefab '{loc.prefab}': GameObject.CreateEnemy returned null");
+                            return true;
+                        }
+
+                        SerializableEnemy serializable = go.GetComponent<SerializableEnemy>();
+                        if (serializable)
+                        {
+                            Destroy(serializable);
+                        }
+
+                        DaggerfallEntityBehaviour behaviour = go.GetComponent<DaggerfallEntityBehaviour>();
+                        if(!behaviour)
+                        {
+                            Debug.LogError($"[LL] Failed to spawn enemy at ({loc.worldX}, {loc.worldY}) on prefab '{loc.prefab}': behaviour was null");
+                            return true;
+                        }
+
+                        EnemyEntity entity = (EnemyEntity)behaviour.Entity;
+                        if (entity == null)
+                        {
+                            Debug.LogError($"[LL] Failed to spawn enemy at ({loc.worldX}, {loc.worldY}) on prefab '{loc.prefab}': entity was null");
+                            return true;
+                        }
+
+                        if (entity.MobileEnemy.Gender == MobileGender.Male)
+                        {
+                            entity.Gender = Genders.Male;
+                        }
+                        else if (entity.MobileEnemy.Gender == MobileGender.Female)
+                        {
+                            entity.Gender = Genders.Female;
+                        }
+
+                        if (extraData.TeamOverride != 0 && Enum.IsDefined(typeof(MobileTeams), extraData.TeamOverride))
+                        {
+                            entity.Team = (MobileTeams)extraData.TeamOverride;
+                        }
+
+                        DaggerfallEnemy enemy = go.GetComponent<DaggerfallEnemy>();
+                        if (!enemy)
+                        {
+                            Debug.LogError($"[LL] Failed to spawn enemy at ({loc.worldX}, {loc.worldY}) on prefab '{loc.prefab}': no enemy component");
+                            return true;
+                        }
+
+                        enemy.LoadID = loadId;
+                        var serializer = go.AddComponent<LocationEnemySerializer>();
+
+                        locationData.AddEnemy(serializer);
+
+                        break;
+
+                    case "19":
+                    {
+                        int iconIndex = UnityEngine.Random.Range(0, DaggerfallLootDataTables.randomTreasureIconIndices.Length);
+                        int iconRecord = DaggerfallLootDataTables.randomTreasureIconIndices[iconIndex];
+                        go = LocationHelper.CreateLootContainer(loc.locationID, obj.objectID, 216, iconRecord, instance.transform);
+                        if (!go)
+                        {
+                            Debug.LogError($"[LL] Could not spawn treasure in prefab '{loc.prefab}': LocationHelper.CreateLootContainer returned null");
+                            return true;
+                        }
+
+                        go.transform.localPosition = obj.pos;
+
+                        locationData.AddLoot(go.GetComponent<LocationLootSerializer>());
+
+                        break;
+                    }
+                }
+            }
+
+            return false;
         }
 
         Vector3 GetLocationPosition(LocationData locationData, DaggerfallTerrain daggerTerrain)
@@ -535,7 +554,7 @@ namespace LocationLoader
             }
 
             // Spawn the terrain's instances
-            foreach (LocationInstance loc in resourceManager.GetTerrainInstances(daggerTerrain))
+            foreach (LocationInstance loc in resourceManager.GetTerrainInstances(daggerTerrain.MapData.mapPixelX, daggerTerrain.MapData.mapPixelY))
             {
                 string context = $"location=\"{loc.name}\"";
 
@@ -600,7 +619,7 @@ namespace LocationLoader
                 averageHeight /= count;
 
                 var instantiatedLocation = InstantiateTopLocationPrefab(loc.prefab, averageHeight, locationPrefab, loc, daggerTerrain);
-                if (instantiatedLocation != null)
+                if (instantiatedLocation)
                 {
                     terrainLocations.Add(instantiatedLocation);
                 }
@@ -697,20 +716,34 @@ namespace LocationLoader
                     daggerTerrain.MapData.heightmapSamples); // Reset terrain data after heightmap samples change
             }
 
-            LLTerrainData extraData = terrainExtraData.GetOrCreateValue(daggerTerrain);
-            extraData.LocationInstanceRects.Clear();
-            foreach (var location in terrainLocations)
+            // Handle the dynamic part of terrain extra data
+            LLTerrainData extraData = GetTerrainExtraData(worldLocation);
+            foreach(var instantiatedLocation in terrainLocations)
             {
-                if (location.Location.type == 0)
-                {
-                    extraData.LocationInstanceRects.Add(new Rect(location.Location.terrainX - location.Prefab.HalfWidth
-                        , location.Location.terrainY - location.Prefab.HalfHeight
-                        , location.Prefab.TerrainWidth
-                        , location.Prefab.TerrainHeight));
+                extraData.LocationInstances.Add(instantiatedLocation);
+            }
+        }
 
-                    extraData.LocationInstances.Add(location);
+        LLTerrainData CreateStaticExtraData(Vector2Int worldCoord)
+        {
+            LLTerrainData extraData = new LLTerrainData();
+
+            foreach (LocationInstance loc in resourceManager.GetTerrainInstances(worldCoord.x, worldCoord.y))
+            {
+                LocationPrefab locationPrefab = resourceManager.GetPrefabInfo(loc.prefab);
+                if (locationPrefab == null)
+                    continue;
+
+                if (loc.type == 0)
+                {
+                    extraData.LocationInstanceRects.Add(new Rect(loc.terrainX - locationPrefab.HalfWidth
+                        , loc.terrainY - locationPrefab.HalfHeight
+                        , locationPrefab.TerrainWidth
+                        , locationPrefab.TerrainHeight));
                 }
             }
+
+            return extraData;
         }
 
         struct LocationRectData

@@ -1,13 +1,15 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-
+using DaggerfallConnect;
 using Unity;
 using UnityEngine;
 
 using DaggerfallWorkshop.Game.Utility.ModSupport;
 using DaggerfallWorkshop;
+using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Utility;
 
 namespace LocationLoader
@@ -28,15 +30,15 @@ namespace LocationLoader
             CacheGlobalInstances();
         }
 
-        public IEnumerable<LocationInstance> GetTerrainInstances(DaggerfallTerrain daggerTerrain)
+        public IEnumerable<LocationInstance> GetTerrainInstances(int mapX, int mapY)
         {
-            var regionIndex = GetRegionIndex(daggerTerrain);
+            var regionIndex = GetRegionIndex(mapX, mapY);
             if (regionIndex != -1)
             {
                 CacheRegionInstances(regionIndex);
             }
 
-            if(worldPixelInstances.TryGetValue(GetCoord(daggerTerrain), out List<LocationInstance> instances))
+            if(worldPixelInstances.TryGetValue(new Vector2Int(mapX, mapY), out List<LocationInstance> instances))
             {
                 return instances;
             }
@@ -84,7 +86,7 @@ namespace LocationLoader
             instance.name = prefabName;
             return instance;
         }
-        
+
         Vector2Int GetCoord(DaggerfallTerrain daggerTerrain)
         {
             return new Vector2Int(daggerTerrain.MapData.mapPixelX, daggerTerrain.MapData.mapPixelY);
@@ -305,7 +307,7 @@ namespace LocationLoader
                             regionFiles[filename] = mod;
                         }
                     }
-#endif                   
+#endif
                 }
 
                 string looseLocationFolder = Path.Combine(Application.dataPath, LocationHelper.locationInstanceFolder);
@@ -353,6 +355,20 @@ namespace LocationLoader
             return region;
         }
 
+        int GetRegionIndex(int mapX, int mapY)
+        {
+            int politicIndex = DaggerfallUnity.Instance.ContentReader.MapFileReader.GetPoliticIndex(mapX, mapY) & 0x7F;
+            // Region 64 is an "all water" terrain tile, according to UESP
+            if (politicIndex < 0 || politicIndex >= DaggerfallUnity.Instance.ContentReader.MapFileReader.RegionCount || politicIndex == 64)
+            {
+                if (politicIndex != 64)
+                    Debug.LogWarning($"Invalid region found at map location [{mapX}, {mapY}]");
+                return -1;
+            }
+
+            return politicIndex;
+        }
+
         void CacheLocationPrefabs()
         {
             if (modLocationPrefabs != null)
@@ -398,7 +414,7 @@ namespace LocationLoader
                         modLocationPrefabs[filename] = mod;
                     }
                 }
-#endif                
+#endif
             }
 
             string looseLocationFolder = Path.Combine(Application.dataPath, LocationHelper.locationInstanceFolder);
@@ -441,8 +457,12 @@ namespace LocationLoader
 
             foreach (LocationObject obj in locationPrefab.obj)
             {
-                // Only instantiate the types for now
-                if (obj.type == 0)
+                // Only instantiate the static types for now, for the LL instance template
+                // Billboards need to be adjusted based on terrain elevation on the instance
+                // Editor markers need to be handled dynamically by instance too
+                // RMBs have climate variation *and* embedded billboards
+
+                if (obj.type == LocationObject.TypeMesh)
                 {
                     GameObject go = LocationHelper.LoadStaticObject(
                         obj.type,
@@ -454,12 +474,14 @@ namespace LocationLoader
                         combiner
                         );
 
-                    if (go != null)
+                    if (go)
                     {
-                        if (go.GetComponent<DaggerfallBillboard>())
+                        // Dead code?
+                        var billboard = go.GetComponent<DaggerfallBillboard>();
+                        if (billboard)
                         {
                             float tempY = go.transform.position.y;
-                            go.GetComponent<DaggerfallBillboard>().AlignToBase();
+                            billboard.AlignToBase();
                             go.transform.position = new Vector3(go.transform.position.x, tempY + ((go.transform.position.y - tempY) * go.transform.localScale.y), go.transform.position.z);
                         }
 
@@ -467,7 +489,7 @@ namespace LocationLoader
                             go.isStatic = true;
                     }
                 }
-                else if (obj.type == 3)
+                else if (obj.type == LocationObject.TypeLLPrefab)
                 {
                     LocationPrefab objPrefabInfo = GetPrefabInfo(obj.name);
                     if (objPrefabInfo == null)
@@ -484,10 +506,10 @@ namespace LocationLoader
                     data.IsEmbeddedLocation = true;
                     data.Prefab = objPrefabInfo;
                 }
-                else if (obj.type == 4)
+                else if (obj.type == LocationObject.TypeUnityPrefab)
                 {
                     GameObject subPrefab = InstantiateUnityPrefab(obj.name, prefabObject.transform);
-                    if(subPrefab == null)
+                    if(!subPrefab)
                     {
                         Debug.LogError($"Could not find Unity prefab '{obj.name}' while instanciating prefab '{prefabName}'");
                         continue;
@@ -538,6 +560,16 @@ namespace LocationLoader
                 prefabTemplates.Add(prefabName, prefabObject);
             }
             return prefabObject;
+        }
+
+        GameObject InstantiateRMB(string rmbName, Transform rmbParent)
+        {
+            // Get block data from name
+            DFBlock blockData;
+            if (!RMBLayout.GetBlockData(rmbName, out blockData))
+                return null;
+
+            return null;
         }
     }
 }

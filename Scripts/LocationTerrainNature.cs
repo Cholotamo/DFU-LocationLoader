@@ -13,12 +13,8 @@ namespace LocationLoader
         public override void LayoutNature(DaggerfallTerrain dfTerrain, DaggerfallBillboardBatch dfBillboardBatch, float terrainScale, int terrainDist)
         {
             var ll = LocationModLoader.modObject.GetComponent<LocationLoader>();
-            List<Rect> llLocationRects = null;
-            if (ll.TryGetTerrainExtraData(new Vector2Int(dfTerrain.MapPixelX, dfTerrain.MapPixelY),
-                    out LocationLoader.LLTerrainData terrainExtraData))
-            {
-                llLocationRects = terrainExtraData.LocationInstanceRects;
-            }
+            LocationLoader.LLTerrainData terrainExtraData = ll.GetTerrainExtraData(new Vector2Int(dfTerrain.MapPixelX, dfTerrain.MapPixelY));
+            List<Rect> llLocationRects = terrainExtraData.LocationInstanceRects;
 
             // Location Rect is expanded slightly to give extra clearance around locations
             Rect rect = dfTerrain.MapData.locationRect;

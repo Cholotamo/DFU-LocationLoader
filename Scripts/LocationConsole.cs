@@ -1479,11 +1479,7 @@ namespace LocationLoader
 
 
             var LL = LocationModLoader.modObject.GetComponent<LocationLoader>();
-            if (!LL.TryGetTerrainExtraData(new Vector2Int(MapPixel.X, MapPixel.Y),
-                    out LocationLoader.LLTerrainData extraData))
-            {
-                return "No information";
-            }
+            LocationLoader.LLTerrainData extraData = LL.GetTerrainExtraData(new Vector2Int(MapPixel.X, MapPixel.Y));
 
             if (extraData.LocationInstances == null || extraData.LocationInstances.Count == 0)
             {
