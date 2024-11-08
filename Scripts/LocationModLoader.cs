@@ -26,7 +26,7 @@ namespace LocationLoader
 
             // It's okay if other mods override us, they better provide a compatibility patch though
             DaggerfallUnity.Instance.TerrainNature = new LocationTerrainNature();
-            DaggerfallUnity.Instance.TerrainTexturing = new LocationTerrainTexturing();
+            //DaggerfallUnity.Instance.TerrainTexturing = new LocationTerrainTexturing();
 
             const int ladderModelId = 41409;
             PlayerActivate.RegisterCustomActivation(mod, ladderModelId, OnLadderActivated);

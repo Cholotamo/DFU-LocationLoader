@@ -1305,7 +1305,7 @@ namespace LocationLoader
             }
             else
             {
-                throw new RuntimeException($"Invalid object type '{locationObject.type}'");
+                throw new Exception($"Invalid object type '{locationObject.type}'");
             }
         }
 

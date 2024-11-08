@@ -301,28 +301,44 @@ namespace LocationLoader
                 }
                 else if (obj.type == LocationObject.TypeRMB)
                 {
-                    go = GameObjectHelper.CreateRMBBlockGameObject(obj.name, layoutX: 0, layoutY: 0, mapId: 0,
-                        locationIndex: 0, addGroundPlane: false);
-                    if (!go)
-                        continue;
+                    // Get the player's current climate index
+                    int currentClimateIndex = GameManager.Instance.PlayerGPS.CurrentClimateIndex;
 
-                    go.transform.parent = instance.transform;
-                    go.transform.localPosition = obj.pos;
-                    go.transform.localRotation = obj.rot;
-                    go.transform.localScale = obj.scale;
-                }
+                    // Determine the appropriate ClimateNatureSets for the current climate
+                    ClimateNatureSets climateNature = ClimateSwaps.FromAPITextureSet((DFLocation.ClimateTextureSet)currentClimateIndex);
 
-                if (go)
-                {
-                    var billboard = go.GetComponent<Billboard>();
-                    if (billboard)
-                    {
-                        float tempY = go.transform.position.y;
-                        billboard.AlignToBase();
-                        var objectTransform = go.transform;
-                        var position = objectTransform.position;
-                        objectTransform.position = new Vector3(position.x, tempY + ((position.y - tempY) * objectTransform.localScale.y), position.z);
-                    }
+                    // Determine the season (set to Winter if it’s currently Winter; otherwise, use Summer)
+                    ClimateSeason climateSeason = (DaggerfallUnity.Instance.WorldTime.Now.SeasonValue == DaggerfallDateTime.Seasons.Winter)
+                        ? ClimateSeason.Winter
+                        : ClimateSeason.Summer;
+
+                    // Also, determine the ClimateBase for ground plane
+                    ClimateBases climateBase = ClimateSwaps.FromAPIClimateBase((DFLocation.ClimateBaseType)currentClimateIndex);
+
+                    // Create the RMB block game object
+                    DFBlock blockData;
+                    GameObject rmbBlock = RMBLayout.CreateBaseGameObject(obj.name, layoutX: 0, layoutY: 0, out blockData);
+
+                    // Add Ground Plane
+                    RMBLayout.AddGroundPlane(ref blockData, rmbBlock.transform, climateBase, climateSeason);
+
+                    // Add Nature Flats with current climate and season
+                    RMBLayout.AddNatureFlats(ref blockData, rmbBlock.transform, null, climateNature, climateSeason);
+
+                    // Add Lights with billboard batching or custom lighting
+                    RMBLayout.AddLights(ref blockData, rmbBlock.transform, rmbBlock.transform, null);
+
+                    // Add other block flats, like animals and NPCs
+                    RMBLayout.AddMiscBlockFlats(ref blockData, rmbBlock.transform, mapId: 0, locationIndex: 0);
+
+                    // Add Exterior Block Flats
+                    RMBLayout.AddExteriorBlockFlats(ref blockData, rmbBlock.transform, rmbBlock.transform, mapId: 0, locationIndex: 0, climateNature, climateSeason);
+
+                    // Place and set up the final RMB block in the scene
+                    rmbBlock.transform.parent = instance.transform;
+                    rmbBlock.transform.localPosition = obj.pos;
+                    rmbBlock.transform.localRotation = obj.rot;
+                    rmbBlock.transform.localScale = obj.scale;
                 }
             }
 
