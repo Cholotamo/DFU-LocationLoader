@@ -10,6 +10,8 @@ using DaggerfallWorkshop.Game.Serialization;
 using DaggerfallWorkshop.Game.Utility.ModSupport;
 using FullSerializer;
 using System.Text.RegularExpressions;
+using DaggerfallConnect.Arena2;
+using DaggerfallWorkshop.Utility.AssetInjection;
 
 namespace LocationLoader
 {
@@ -1289,6 +1291,12 @@ namespace LocationLoader
             }
             else if(locationObject.type == LocationObject.TypeRMB)
             {
+                    ContentReader reader = DaggerfallUnity.Instance.ContentReader;
+                    BlocksFile blocksFile = reader.BlockFileReader;
+
+                    if (blocksFile.GetBlockIndex(locationObject.name) == -1)
+                        WorldDataReplacement.AssignNextIndex(locationObject.name);
+
                 var newObject = GameObjectHelper.CreateRMBBlockGameObject(locationObject.name, layoutX: 0, layoutY: 0,
                     mapId: 0,
                     locationIndex: 0, addGroundPlane: true);
