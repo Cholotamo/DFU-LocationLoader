@@ -16,6 +16,7 @@ namespace LocationLoader
         public Vector3 pos = Vector3.zero;
         public Quaternion rot = Quaternion.Euler(0, 0, 0);
         public Vector3 scale = new Vector3(1, 1, 1);
+        public bool groundPlane = false;
 
         public const int TypeMesh = 0;
         public const int TypeBillboard = 1;

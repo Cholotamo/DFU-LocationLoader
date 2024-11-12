@@ -332,7 +332,7 @@ namespace LocationLoader
                     GameObject rmbBlock = RMBLayout.CreateBaseGameObject(obj.name, layoutX: 0, layoutY: 0, out blockData);
 
                     // Add the ground plane with the determined climate base and season
-                    RMBLayout.AddGroundPlane(ref blockData, rmbBlock.transform, climateBase, climateSeason);
+                    if (obj.groundPlane == true) RMBLayout.AddGroundPlane(ref blockData, rmbBlock.transform, climateBase, climateSeason);
 
                     // Add nature flats with the determined nature set and season
                     RMBLayout.AddNatureFlats(ref blockData, rmbBlock.transform, null, climateNature, climateSeason);

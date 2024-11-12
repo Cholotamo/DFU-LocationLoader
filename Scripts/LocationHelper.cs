@@ -2698,6 +2698,13 @@ namespace LocationLoader
                             obj.rot.z = float.Parse(node.InnerXml, cultureInfo);
                     }
 
+                    if (obj.type == LocationObject.TypeRMB)
+                    {
+                        var groundPlaneNode = objectNode["groundPlane"];
+                        if (groundPlaneNode != null)
+                            obj.groundPlane = bool.Parse(groundPlaneNode.InnerXml);
+                    }
+
                     var extraDataNode = objectNode["extraData"];
                     if (extraDataNode != null)
                         obj.extraData = extraDataNode.InnerXml;
@@ -2816,6 +2823,11 @@ namespace LocationLoader
                     writer.WriteLine("\t\t<rotX>" + obj.rot.x.ToString(cultureInfo) + "</rotX>");
                     writer.WriteLine("\t\t<rotY>" + obj.rot.y.ToString(cultureInfo) + "</rotY>");
                     writer.WriteLine("\t\t<rotZ>" + obj.rot.z.ToString(cultureInfo) + "</rotZ>");
+                }
+
+                if (obj.type == LocationObject.TypeRMB && obj.groundPlane)
+                {
+                    writer.WriteLine("\t\t<groundPlane>" + obj.groundPlane.ToString().ToLower() + "</groundPlane>");
                 }
 
                 writer.WriteLine("\t</object>");
