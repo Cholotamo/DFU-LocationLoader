@@ -1291,7 +1291,7 @@ namespace LocationLoader
             {
                 var newObject = GameObjectHelper.CreateRMBBlockGameObject(locationObject.name, layoutX: 0, layoutY: 0,
                     mapId: 0,
-                    locationIndex: 0, addGroundPlane: false);
+                    locationIndex: 0, addGroundPlane: true);
                 if (!newObject)
                     return null;
 

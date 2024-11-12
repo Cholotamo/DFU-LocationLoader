@@ -10,6 +10,7 @@ using DaggerfallWorkshop.Game.Entity;
 using static DaggerfallWorkshop.Utility.ContentReader;
 using DaggerfallWorkshop.Utility.AssetInjection;
 using DaggerfallConnect;
+using DaggerfallConnect.Arena2;
 
 namespace LocationLoader
 {
@@ -301,28 +302,40 @@ namespace LocationLoader
                 }
                 else if (obj.type == LocationObject.TypeRMB)
                 {
-                    // Get the player's current climate index
+                    // Step 1: Get the player's current climate index
                     int currentClimateIndex = GameManager.Instance.PlayerGPS.CurrentClimateIndex;
+                    Debug.Log($"[LocationLoader] Player's current climate index: {currentClimateIndex}");
 
-                    // Determine the appropriate ClimateNatureSets for the current climate
-                    ClimateNatureSets climateNature = ClimateSwaps.FromAPITextureSet((DFLocation.ClimateTextureSet)currentClimateIndex);
+                    // Step 2: Use MapsFile to get the climate settings based on the current climate index
+                    var climateSettings = MapsFile.GetWorldClimateSettings(currentClimateIndex);
+                    Debug.Log($"[LocationLoader] Mapped climate index {currentClimateIndex} to ClimateBaseType: {climateSettings.ClimateType}, NatureSet: {climateSettings.NatureSet}");
 
-                    // Determine the season (set to Winter if it’s currently Winter; otherwise, use Summer)
+                    // Step 3: Convert DFLocation.ClimateBaseType to ClimateBases using ClimateSwaps
+                    ClimateBases climateBase = ClimateSwaps.FromAPIClimateBase(climateSettings.ClimateType);
+                    Debug.Log($"[LocationLoader] Converted ClimateBaseType to ClimateBases: {climateBase}");
+
+                    // Step 4: Convert DFLocation.ClimateTextureSet to ClimateNatureSets using ClimateSwaps
+                    ClimateNatureSets climateNature = ClimateSwaps.FromAPITextureSet(climateSettings.NatureSet);
+                    Debug.Log($"[LocationLoader] Converted ClimateTextureSet to ClimateNatureSets: {climateNature}");
+
+                    // Step 5: Determine the season (set to Winter if it’s currently Winter; otherwise, use Summer)
                     ClimateSeason climateSeason = (DaggerfallUnity.Instance.WorldTime.Now.SeasonValue == DaggerfallDateTime.Seasons.Winter)
                         ? ClimateSeason.Winter
                         : ClimateSeason.Summer;
+                    Debug.Log($"[LocationLoader] Determined season as: {climateSeason}");
 
-                    // Also, determine the ClimateBase for ground plane
-                    ClimateBases climateBase = ClimateSwaps.FromAPIClimateBase((DFLocation.ClimateBaseType)currentClimateIndex);
+                    // Example usage within RMB block setup with additional debug information
 
                     // Create the RMB block game object
                     DFBlock blockData;
                     GameObject rmbBlock = RMBLayout.CreateBaseGameObject(obj.name, layoutX: 0, layoutY: 0, out blockData);
 
-                    // Add Ground Plane
+                    // Add the ground plane with the determined climate base and season
+                    Debug.Log($"[LocationLoader] Adding ground plane with ClimateBase: {climateBase}, Season: {climateSeason}");
                     RMBLayout.AddGroundPlane(ref blockData, rmbBlock.transform, climateBase, climateSeason);
 
-                    // Add Nature Flats with current climate and season
+                    // Add nature flats with the determined nature set and season
+                    Debug.Log($"[LocationLoader] Adding nature flats with ClimateNatureSet: {climateNature}, Season: {climateSeason}");
                     RMBLayout.AddNatureFlats(ref blockData, rmbBlock.transform, null, climateNature, climateSeason);
 
                     // Add Lights with billboard batching or custom lighting
