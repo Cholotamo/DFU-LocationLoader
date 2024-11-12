@@ -302,27 +302,28 @@ namespace LocationLoader
                 }
                 else if (obj.type == LocationObject.TypeRMB)
                 {
+                    ContentReader reader = DaggerfallUnity.Instance.ContentReader;
+                    BlocksFile blocksFile = reader.BlockFileReader;
+
+                    if (blocksFile.GetBlockIndex(obj.name) == -1)
+                        WorldDataReplacement.AssignNextIndex(obj.name);
+
                     // Step 1: Get the player's current climate index
                     int currentClimateIndex = GameManager.Instance.PlayerGPS.CurrentClimateIndex;
-                    Debug.Log($"[LocationLoader] Player's current climate index: {currentClimateIndex}");
 
                     // Step 2: Use MapsFile to get the climate settings based on the current climate index
                     var climateSettings = MapsFile.GetWorldClimateSettings(currentClimateIndex);
-                    Debug.Log($"[LocationLoader] Mapped climate index {currentClimateIndex} to ClimateBaseType: {climateSettings.ClimateType}, NatureSet: {climateSettings.NatureSet}");
 
                     // Step 3: Convert DFLocation.ClimateBaseType to ClimateBases using ClimateSwaps
                     ClimateBases climateBase = ClimateSwaps.FromAPIClimateBase(climateSettings.ClimateType);
-                    Debug.Log($"[LocationLoader] Converted ClimateBaseType to ClimateBases: {climateBase}");
 
                     // Step 4: Convert DFLocation.ClimateTextureSet to ClimateNatureSets using ClimateSwaps
                     ClimateNatureSets climateNature = ClimateSwaps.FromAPITextureSet(climateSettings.NatureSet);
-                    Debug.Log($"[LocationLoader] Converted ClimateTextureSet to ClimateNatureSets: {climateNature}");
 
                     // Step 5: Determine the season (set to Winter if it’s currently Winter; otherwise, use Summer)
                     ClimateSeason climateSeason = (DaggerfallUnity.Instance.WorldTime.Now.SeasonValue == DaggerfallDateTime.Seasons.Winter)
                         ? ClimateSeason.Winter
                         : ClimateSeason.Summer;
-                    Debug.Log($"[LocationLoader] Determined season as: {climateSeason}");
 
                     // Example usage within RMB block setup with additional debug information
 
@@ -331,11 +332,9 @@ namespace LocationLoader
                     GameObject rmbBlock = RMBLayout.CreateBaseGameObject(obj.name, layoutX: 0, layoutY: 0, out blockData);
 
                     // Add the ground plane with the determined climate base and season
-                    Debug.Log($"[LocationLoader] Adding ground plane with ClimateBase: {climateBase}, Season: {climateSeason}");
                     RMBLayout.AddGroundPlane(ref blockData, rmbBlock.transform, climateBase, climateSeason);
 
                     // Add nature flats with the determined nature set and season
-                    Debug.Log($"[LocationLoader] Adding nature flats with ClimateNatureSet: {climateNature}, Season: {climateSeason}");
                     RMBLayout.AddNatureFlats(ref blockData, rmbBlock.transform, null, climateNature, climateSeason);
 
                     // Add Lights with billboard batching or custom lighting
