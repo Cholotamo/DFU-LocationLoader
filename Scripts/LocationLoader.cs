@@ -305,8 +305,8 @@ namespace LocationLoader
                     ContentReader reader = DaggerfallUnity.Instance.ContentReader;
                     BlocksFile blocksFile = reader.BlockFileReader;
 
-                    if (blocksFile.GetBlockIndex(obj.name) == -1)
-                        WorldDataReplacement.AssignNextIndex(obj.name);
+                    //if (blocksFile.GetBlockIndex(obj.name) == -1)
+                        //WorldDataReplacement.AssignNextIndex(obj.name); Commented out for until PR accepted
 
                     // Step 1: Get the player's current climate index
                     int currentClimateIndex = GameManager.Instance.PlayerGPS.CurrentClimateIndex;

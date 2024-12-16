@@ -1294,8 +1294,8 @@ namespace LocationLoader
                     ContentReader reader = DaggerfallUnity.Instance.ContentReader;
                     BlocksFile blocksFile = reader.BlockFileReader;
 
-                    if (blocksFile.GetBlockIndex(locationObject.name) == -1)
-                        WorldDataReplacement.AssignNextIndex(locationObject.name);
+                    //if (blocksFile.GetBlockIndex(locationObject.name) == -1)
+                    //    WorldDataReplacement.AssignNextIndex(locationObject.name); //Commented out until PR accepted
 
                 var newObject = GameObjectHelper.CreateRMBBlockGameObject(locationObject.name, layoutX: 0, layoutY: 0,
                     mapId: 0,
