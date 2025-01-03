@@ -295,6 +295,17 @@ namespace LocationLoader
                         obj.rot,
                         obj.scale
                         );
+
+                    Vector3 offset = Vector3.zero;
+
+                    var billboard = go.GetComponent<Billboard>();
+                    if (billboard)
+                    {
+                        billboard.AlignToBase();
+                        offset.y = (billboard.Summary.Size.y / 2);
+                    }
+
+                    go.transform.localPosition = obj.pos + offset;
                 }
                 else if (obj.type == LocationObject.TypeEditorMarker)
                 {
@@ -465,7 +476,16 @@ namespace LocationLoader
                             return true;
                         }
 
-                        go.transform.localPosition = obj.pos;
+                        Vector3 offset = Vector3.zero;
+
+                        var billboard = go.GetComponent<Billboard>();
+                        if (billboard)
+                        {
+                            billboard.AlignToBase();
+                            offset.y = (billboard.Summary.Size.y / 2);
+                        }
+
+                        go.transform.localPosition = obj.pos + offset;
 
                         locationData.AddLoot(go.GetComponent<LocationLootSerializer>());
 
@@ -524,6 +544,16 @@ namespace LocationLoader
             instance.transform.localPosition = terrainOffset;
             instance.transform.localRotation = loc.rot;
             instance.transform.localScale = new Vector3(loc.scale, loc.scale, loc.scale);
+
+            //Debug.LogWarning($"Terrain offset is {terrainOffset}");
+
+            // Remove type 0 prefabs if they are created on water
+            if (loc.type == 0 && terrainOffset.y < 101.0f)
+            {
+                //Debug.LogWarning($"Skipping prefab '{prefabName}' at ({loc.worldX}, {loc.worldY}): terrain offset y ({terrainOffset.y}) is less than 101.0.");
+                Destroy(instance); // Remove the prefab
+                return null;
+            }
 
             // Now that we have the LocationData, add it to "pending instances" if needed
             if(instancePendingTerrains.TryGetValue(loc.locationID, out List<Vector2Int> pendingTerrains))
@@ -607,11 +637,6 @@ namespace LocationLoader
                     continue;
                 }
 
-                if (PruneInstance(loc, locationPrefab))
-                {
-                    continue;
-                }
-
                 if (loc.type == 2)
                 {
                     // We find and adjust the type 2 instance position here
@@ -624,6 +649,11 @@ namespace LocationLoader
                         loc.terrainX = coastTileCoord.x;
                         loc.terrainY = coastTileCoord.y;
                     }
+                }
+
+                if (PruneInstance(loc, locationPrefab))
+                {
+                    continue;
                 }
 
                 int count = 0;
