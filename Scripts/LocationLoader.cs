@@ -535,7 +535,7 @@ namespace LocationLoader
             data.Prefab = locationPrefab;
             data.OverlapAverageHeight = overlapAverageHeight;
 
-            if(loc.type == 1 && loc.sink > 0.0f)
+            if (loc.type == 1 && loc.sink > 0.0f)
             {
                 FindAdjustedHeightOffset(data);
             }
@@ -545,22 +545,50 @@ namespace LocationLoader
             instance.transform.localRotation = loc.rot;
             instance.transform.localScale = new Vector3(loc.scale, loc.scale, loc.scale);
 
-            //Debug.LogWarning($"Terrain offset is {terrainOffset}");
-
-            // Remove type 0 prefabs if they are created on water
-            if (loc.type == 0 && terrainOffset.y < 101.0f)
+            // FOOTPRINT-BASED WATER PRUNE for type-0 prefabs
+            if (loc.type == 0)
             {
-                //Debug.LogWarning($"Skipping prefab '{prefabName}' at ({loc.worldX}, {loc.worldY}): terrain offset y ({terrainOffset.y}) is less than 101.0.");
-                Destroy(instance); // Remove the prefab
-                return null;
+                // 1) compute normalized water threshold
+                float maxWorldPerUnit = DaggerfallUnity.Instance.TerrainSampler.MaxTerrainHeight * daggerTerrain.TerrainScale;
+                float waterNormThreshold = 101f / maxWorldPerUnit;
+
+                // 2) figure out your footprint in heightmap coordinates
+                int halfW = locationPrefab.HalfWidth;
+                int halfH = locationPrefab.HalfHeight;
+                int minX = Mathf.Clamp(loc.terrainX - halfW, 0, TERRAIN_SIZE - 1);
+                int minY = Mathf.Clamp(loc.terrainY - halfH, 0, TERRAIN_SIZE - 1);
+                int maxX = Mathf.Clamp(loc.terrainX + halfW, 0, TERRAIN_SIZE - 1);
+                int maxY = Mathf.Clamp(loc.terrainY + halfH, 0, TERRAIN_SIZE - 1);
+
+                // 3) scan for any water‐level samples
+                bool overlapsWater = false;
+                for (int yy = minY; yy <= maxY && !overlapsWater; yy++)
+                {
+                    for (int xx = minX; xx <= maxX; xx++)
+                    {
+                        if (daggerTerrain.MapData.heightmapSamples[yy, xx] < waterNormThreshold)
+                        {
+                            overlapsWater = true;
+                            break;
+                        }
+                    }
+                }
+
+                // 4) if any tile is below water level, destroy the prefab
+                if (overlapsWater)
+                {
+                    Debug.LogWarning($"[LL] Skipping '{prefabName}' at ({loc.worldX},{loc.worldY}): footprint overlaps water");
+                    Destroy(instance);
+                    return null;
+                }
             }
 
             // Now that we have the LocationData, add it to "pending instances" if needed
-            if(instancePendingTerrains.TryGetValue(loc.locationID, out List<Vector2Int> pendingTerrains))
+            if (instancePendingTerrains.TryGetValue(loc.locationID, out List<Vector2Int> pendingTerrains))
             {
                 foreach (Vector2Int terrainCoord in pendingTerrains)
                 {
-                    if(!pendingIncompleteLocations.TryGetValue(terrainCoord, out List<LocationData> terrainPendingLocations))
+                    if (!pendingIncompleteLocations.TryGetValue(terrainCoord, out List<LocationData> terrainPendingLocations))
                     {
                         terrainPendingLocations = new List<LocationData>();
                         pendingIncompleteLocations.Add(terrainCoord, terrainPendingLocations);
