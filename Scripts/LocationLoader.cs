@@ -817,89 +817,91 @@ namespace LocationLoader
 
         bool BlendTerrain(DaggerfallTerrain daggerTerrain, List<LocationData> terrainLocations)
         {
-            float transitionWidth = 10.0f;
+            const float transitionWidth = 10.0f;
+            // Convert cutoff to normalized heightmap units
+            float maxWorldPerUnit = DaggerfallUnity.Instance.TerrainSampler.MaxTerrainHeight * daggerTerrain.TerrainScale;
+            float waterNormThreshold = 101f / maxWorldPerUnit;
 
+            // 1) Gather all the rectangles where we need to flatten/blend
             List<LocationRectData> locationRects = new List<LocationRectData>();
-
             foreach (LocationData loc in terrainLocations)
             {
                 if (loc.Location.type == 0)
                 {
-                    LocationRectData locationRectData = new LocationRectData();
-                    locationRectData.rect = new Rect(
-                        loc.Location.terrainX - loc.Prefab.HalfWidth,
-                        loc.Location.terrainY - loc.Prefab.HalfHeight,
-                        loc.Prefab.TerrainWidth,
-                        loc.Prefab.TerrainHeight
-                    );
-                    locationRectData.averageHeight = loc.OverlapAverageHeight;
-                    locationRects.Add(locationRectData);
+                    locationRects.Add(new LocationRectData
+                    {
+                        rect = new Rect(
+                            loc.Location.terrainX - loc.Prefab.HalfWidth,
+                            loc.Location.terrainY - loc.Prefab.HalfHeight,
+                            loc.Prefab.TerrainWidth,
+                            loc.Prefab.TerrainHeight
+                        ),
+                        averageHeight = loc.OverlapAverageHeight
+                    });
                 }
             }
 
-            // Ignore if we have no type 0 instances
+            // 2) Add the built-in DFLocation rect if present
+            var dfRect = daggerTerrain.MapData.locationRect;
+            if (dfRect.x > 0 && dfRect.y > 0)
+            {
+                float avg = 0f;
+                int cnt = 0;
+                int minX = Mathf.FloorToInt(dfRect.xMin);
+                int minY = Mathf.FloorToInt(dfRect.yMin);
+                int maxX = Mathf.CeilToInt (dfRect.xMax);
+                int maxY = Mathf.CeilToInt (dfRect.yMax);
+                for (int y = minY; y <= maxY; y++)
+                    for (int x = minX; x <= maxX; x++)
+                    {
+                        avg += daggerTerrain.MapData.heightmapSamples[y, x];
+                        cnt++;
+                    }
+                avg /= cnt;
+
+                locationRects.Add(new LocationRectData
+                {
+                    rect = dfRect,
+                    averageHeight = avg
+                });
+            }
+
             if (locationRects.Count == 0)
                 return false;
 
-            var locationRect = daggerTerrain.MapData.locationRect;
-            bool hasDFLocation = locationRect.x > 0 && locationRect.y > 0;
-            if (hasDFLocation)
-            {
-                LocationRectData locationRectData = new LocationRectData();
-                locationRectData.rect = locationRect;
-
-                float averageHeight = 0.0f;
-                int count = 0;
-                int minX = Mathf.FloorToInt(locationRect.xMin);
-                int minY = Mathf.FloorToInt(locationRect.yMin);
-                int maxX = Mathf.CeilToInt(locationRect.xMax);
-                int maxY = Mathf.CeilToInt(locationRect.yMax);
-                for (int y = minY; y <= maxY; y++)
-                {
-                    for (int x = minX; x <= maxX; x++)
-                    {
-                        averageHeight += daggerTerrain.MapData.heightmapSamples[y, x];
-                        count++;
-                    }
-                }
-
-                averageHeight /= count;
-
-                locationRectData.averageHeight = averageHeight;
-
-                locationRects.Add(locationRectData);
-            }
-
+            // 3) Loop over every internal sample and blend if needed—but skip water
             for (int y = 1; y < TERRAIN_SIZE - 1; y++)
             {
                 for (int x = 1; x < TERRAIN_SIZE - 1; x++)
                 {
+                    // Check water cutoff first
+                    float origNorm = daggerTerrain.MapData.heightmapSamples[y, x];
+                    if (origNorm < waterNormThreshold)
+                        continue;
+
                     Vector2 point = new Vector2(x, y);
 
-                    float averageHeight = 0.0f;
-                    float currentDistance = 128.0f;
-                    foreach (LocationRectData rect in locationRects)
+                    // Find nearest rect and its flat height
+                    float bestDist = float.MaxValue;
+                    float targetNorm = origNorm;
+                    foreach (var rr in locationRects)
                     {
-                        float distance = GetDistanceFromRect(rect.rect, point);
-                        if (distance == 0.0f)
+                        float d = GetDistanceFromRect(rr.rect, point);
+                        if (d < bestDist)
                         {
-                            currentDistance = 0.0f;
-                            averageHeight = rect.averageHeight;
-                            break;
-                        }
-                        else if (distance < currentDistance)
-                        {
-                            currentDistance = distance;
-                            averageHeight = rect.averageHeight;
+                            bestDist = d;
+                            targetNorm = rr.averageHeight;
+                            if (d == 0f) break;
                         }
                     }
 
-                    if (currentDistance < transitionWidth)
+                    // Only blend within transitionWidth
+                    if (bestDist < transitionWidth)
                     {
-                        float factor = currentDistance / transitionWidth;
-                        float originalHeight = daggerTerrain.MapData.heightmapSamples[y, x];
-                        float blendedHeight = Mathf.Lerp(averageHeight, originalHeight, Mathf.SmoothStep(0.0f, 1.0f, factor));
-                        daggerTerrain.MapData.heightmapSamples[y, x] = blendedHeight;
+                        float t = bestDist / transitionWidth;                         // 0 at edge, 1 at band edge
+                        float smooth = Mathf.SmoothStep(0f, 1f, t);                   // ease in/out
+                        float blended = Mathf.Lerp(targetNorm, origNorm, smooth);
+                        daggerTerrain.MapData.heightmapSamples[y, x] = blended;
                     }
                 }
             }
