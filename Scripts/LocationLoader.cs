@@ -336,26 +336,39 @@ namespace LocationLoader
                         ? ClimateSeason.Winter
                         : ClimateSeason.Summer;
 
-                    // Example usage within RMB block setup with additional debug information
-
                     // Create the RMB block game object
                     DFBlock blockData;
-                    GameObject rmbBlock = RMBLayout.CreateBaseGameObject(obj.name, layoutX: 0, layoutY: 0, out blockData);
+                    GameObject rmbBlock = GameObjectHelper.CreateRMBBlockGameObject(
+                        obj.name,          // blockName
+                        layoutX: 0,        // layoutX
+                        layoutY: 0,        // layoutY
+                        mapId: 0,          // mapId
+                        locationIndex: 0,  // locationIndex
+                        addGroundPlane: false,  // addGroundPlane
+                        cloneFrom: null,        // DaggerfallRMBBlock cloneFrom
+                        natureBillboardBatch: null,  // DaggerfallBillboardBatch natureBillboardBatch
+                        lightsBillboardBatch: null,  // DaggerfallBillboardBatch lightsBillboardBatch
+                        animalsBillboardBatch: null, // DaggerfallBillboardBatch animalsBillboardBatch
+                        miscBillboardAtlas: null,    // TextureAtlasBuilder miscBillboardAtlas
+                        miscBillboardBatch: null,    // DaggerfallBillboardBatch miscBillboardBatch
+                        climateNature,         // climateNature
+                        climateSeason);        // climateSeason
 
-                    // Add the ground plane with the determined climate base and season
-                    //if (obj.groundPlane == true) RMBLayout.AddGroundPlane(ref blockData, rmbBlock.transform, climateBase, climateSeason);
+                    // Ensure the DaggerfallLocation component is attached to the RMB block
+                    DaggerfallLocation locationComponent = rmbBlock.GetComponent<DaggerfallLocation>();
+                    if (locationComponent == null)
+                    {
+                        locationComponent = rmbBlock.AddComponent<DaggerfallLocation>();
+                    }
 
-                    // Add nature flats with the determined nature set and season
-                    RMBLayout.AddNatureFlats(ref blockData, rmbBlock.transform, null, climateNature, climateSeason);
+                    // Assign the climate properties to the location component
+                    locationComponent.ClimateUse = LocationClimateUse.Custom;
+                    locationComponent.CurrentClimate = climateBase;
+                    locationComponent.CurrentSeason = climateSeason;
+                    locationComponent.CurrentNatureSet = climateNature;
 
-                    // Add Lights with billboard batching or custom lighting
-                    RMBLayout.AddLights(ref blockData, rmbBlock.transform, rmbBlock.transform, null);
-
-                    // Add other block flats, like animals and NPCs
-                    RMBLayout.AddMiscBlockFlats(ref blockData, rmbBlock.transform, mapId: 0, locationIndex: 0);
-
-                    // Add Exterior Block Flats
-                    RMBLayout.AddExteriorBlockFlats(ref blockData, rmbBlock.transform, rmbBlock.transform, mapId: 0, locationIndex: 0, climateNature, climateSeason);
+                    // Apply the climate settings
+                    locationComponent.ApplyClimateSettings();
 
                     // Place and set up the final RMB block in the scene
                     rmbBlock.transform.parent = instance.transform;
