@@ -313,9 +313,6 @@ namespace LocationLoader
                 }
                 else if (obj.type == LocationObject.TypeRMB)
                 {
-                    ContentReader reader = DaggerfallUnity.Instance.ContentReader;
-                    BlocksFile blocksFile = reader.BlockFileReader;
-
                     //if (blocksFile.GetBlockIndex(obj.name) == -1)
                         //WorldDataReplacement.AssignNextIndex(obj.name); Commented out for until PR accepted
 
@@ -338,21 +335,22 @@ namespace LocationLoader
 
                     // Create the RMB block game object
                     DFBlock blockData;
-                    GameObject rmbBlock = GameObjectHelper.CreateRMBBlockGameObject(
-                        obj.name,          // blockName
-                        layoutX: 0,        // layoutX
-                        layoutY: 0,        // layoutY
-                        mapId: 0,          // mapId
-                        locationIndex: 0,  // locationIndex
-                        addGroundPlane: false,  // addGroundPlane
-                        cloneFrom: null,        // DaggerfallRMBBlock cloneFrom
-                        natureBillboardBatch: null,  // DaggerfallBillboardBatch natureBillboardBatch
-                        lightsBillboardBatch: null,  // DaggerfallBillboardBatch lightsBillboardBatch
-                        animalsBillboardBatch: null, // DaggerfallBillboardBatch animalsBillboardBatch
-                        miscBillboardAtlas: null,    // TextureAtlasBuilder miscBillboardAtlas
-                        miscBillboardBatch: null,    // DaggerfallBillboardBatch miscBillboardBatch
-                        climateNature,         // climateNature
-                        climateSeason);        // climateSeason
+                    GameObject rmbBlock = RMBLayout.CreateBaseGameObject(obj.name, layoutX: 0, layoutY: 0, out blockData);
+
+                    // Add the ground plane with the determined climate base and season
+                    //if (obj.groundPlane == true) RMBLayout.AddGroundPlane(ref blockData, rmbBlock.transform, climateBase, climateSeason);
+
+                    // Add nature flats with the determined nature set and season
+                    RMBLayout.AddNatureFlats(ref blockData, rmbBlock.transform, null, climateNature, climateSeason);
+
+                    // Add Lights with billboard batching or custom lighting
+                    RMBLayout.AddLights(ref blockData, rmbBlock.transform, rmbBlock.transform, null);
+
+                    // Add other block flats, like animals and NPCs
+                    RMBLayout.AddMiscBlockFlats(ref blockData, rmbBlock.transform, mapId: 0, locationIndex: 0);
+
+                    // Add Exterior Block Flats
+                    RMBLayout.AddExteriorBlockFlats(ref blockData, rmbBlock.transform, rmbBlock.transform, mapId: 0, locationIndex: 0, climateNature, climateSeason);
 
                     // Place and set up the final RMB block in the scene
                     rmbBlock.transform.parent = instance.transform;
