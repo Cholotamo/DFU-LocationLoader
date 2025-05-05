@@ -354,22 +354,6 @@ namespace LocationLoader
                         climateNature,         // climateNature
                         climateSeason);        // climateSeason
 
-                    // Ensure the DaggerfallLocation component is attached to the RMB block
-                    DaggerfallLocation locationComponent = rmbBlock.GetComponent<DaggerfallLocation>();
-                    if (locationComponent == null)
-                    {
-                        locationComponent = rmbBlock.AddComponent<DaggerfallLocation>();
-                    }
-
-                    // Assign the climate properties to the location component
-                    locationComponent.ClimateUse = LocationClimateUse.Custom;
-                    locationComponent.CurrentClimate = climateBase;
-                    locationComponent.CurrentSeason = climateSeason;
-                    locationComponent.CurrentNatureSet = climateNature;
-
-                    // Apply the climate settings
-                    locationComponent.ApplyClimateSettings();
-
                     // Place and set up the final RMB block in the scene
                     rmbBlock.transform.parent = instance.transform;
                     rmbBlock.transform.localPosition = obj.pos;
@@ -618,6 +602,30 @@ namespace LocationLoader
             {
                 InstantiateInstanceDynamicObjects(data);
             }
+
+            var reader = DaggerfallUnity.Instance.ContentReader.MapFileReader;
+            int climateIndex = reader.GetClimateIndex(loc.worldX, loc.worldY);
+            var climateSettings = MapsFile.GetWorldClimateSettings(climateIndex);
+
+            // Convert to DaggerfallLocation enums
+            var climateBase   = ClimateSwaps.FromAPIClimateBase(climateSettings.ClimateType);
+            var climateNature = ClimateSwaps.FromAPITextureSet  (climateSettings.NatureSet);
+            var climateSeason = (DaggerfallUnity.Instance.WorldTime.Now.SeasonValue == DaggerfallDateTime.Seasons.Winter)
+                ? ClimateSeason.Winter
+                : ClimateSeason.Summer;
+
+            // Add (or fetch) a DaggerfallLocation on the root prefab
+            var locationComponent = instance.GetComponent<DaggerfallLocation>()
+                                    ?? instance.AddComponent<DaggerfallLocation>();
+
+            // Tell it you’re using a custom climate and set your values
+            locationComponent.ClimateUse      = LocationClimateUse.Custom;
+            locationComponent.CurrentClimate  = climateBase;
+            locationComponent.CurrentNatureSet = climateNature;
+            locationComponent.CurrentSeason   = climateSeason;
+
+            // Actually push those settings into the material/shader system
+            locationComponent.ApplyClimateSettings();
 
             return data;
         }
