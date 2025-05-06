@@ -625,6 +625,10 @@ namespace LocationLoader
             // Actually push those settings into the material/shader system
             locationComponent.ApplyClimateSettings();
 
+            // force every RuntimeMaterials under this prefab to re‑apply with the new climate
+            foreach (var rm in instance.GetComponentsInChildren<RuntimeMaterials>())
+                rm.ApplyMaterials();
+
             return data;
         }
 
