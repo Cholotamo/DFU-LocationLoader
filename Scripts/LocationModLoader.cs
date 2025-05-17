@@ -11,6 +11,12 @@ namespace LocationLoader
         public static Mod mod { get; private set; }
         public static GameObject modObject { get; private set; }
 
+	    private static Mod WODBiomesMod;
+	    public static bool WODBiomesModEnabled;
+
+	    private static Mod VEMod;
+	    public static bool VEModEnabled;
+
         [Invoke(StateManager.StateTypes.Start, 0)]
         public static void Init(InitParams initParams)
         {
@@ -23,6 +29,18 @@ namespace LocationLoader
             modObject.AddComponent<LocationResourceManager>();
             mod.MessageReceiver = MessageReceiver;
             mod.IsReady = true;
+
+		    WODBiomesMod = ModManager.Instance.GetModFromGUID("3b4319ac-34bb-411d-aa2c-d52b7b9eb69d");
+		    if (WODBiomesMod != null && WODBiomesMod.Enabled)
+		    {
+			    WODBiomesModEnabled = true;
+		    }
+
+		    VEMod = ModManager.Instance.GetModFromGUID("1f124f8c-dd01-48ad-a5b9-0b4a0e4702d2");
+		    if (VEMod != null && VEMod.Enabled)
+		    {
+			    VEModEnabled = true;
+		    }
 
             // It's okay if other mods override us, they better provide a compatibility patch though
             DaggerfallUnity.Instance.TerrainNature = new LocationTerrainNature();

@@ -357,10 +357,55 @@ namespace LocationLoader
                     rmbBlock.transform.localPosition = obj.pos;
                     rmbBlock.transform.localRotation = obj.rot;
                     rmbBlock.transform.localScale = obj.scale;
+
+                    // now swap any loose nature flats if WOD Biomes enabled:
+                    if (LocationModLoader.WODBiomesModEnabled) BiomesClimateSwap(rmbBlock);
                 }
             }
 
             locationData.HasSpawnedDynamicObjects = true;
+        }
+
+        /// <summary>
+        /// If player is in regions 43/44/45 and SubTropical, swap out any loose nature billboards
+        /// under this RMB block to archive 10030, optionally scale them, and re-ground them.
+        /// </summary>
+        void BiomesClimateSwap(GameObject rmbBlock)
+        {
+            // 1) Region & climate checks
+            var gps     = GameManager.Instance.PlayerGPS;
+            int region  = gps.CurrentRegionIndex;
+            int[] validRegions = { 43, 44, 45 };
+            if (Array.IndexOf(validRegions, region) < 0)
+                return;
+
+            var climateSettings = MapsFile.GetWorldClimateSettings(gps.CurrentClimateIndex);
+            var natureSet = ClimateSwaps.FromAPITextureSet(climateSettings.NatureSet);
+            if (natureSet != ClimateNatureSets.SubTropical)
+                return;
+
+            // 2) Swap, optional scale, & re-ground all loose nature billboards
+            const int CUSTOM_ARCHIVE = 10030;
+            var flats = rmbBlock.GetComponentsInChildren<Billboard>(true);
+            Debug.Log($"[SwapLoose] Found {flats.Length} total flats in {rmbBlock.name}");
+            foreach (var b in flats)
+            {
+                if (b.Summary.FlatType != FlatTypes.Nature)
+                    continue;
+
+                // swap texture
+                b.SetMaterial(CUSTOM_ARCHIVE, b.Summary.Record);
+
+                // scale up by 2× if VEMod is *not* enabled
+                if (!LocationModLoader.VEModEnabled)
+                    b.transform.localScale *= 2f;
+
+                // now re-ground it: half of its *scaled* height
+                float halfHeight = b.Summary.Size.y * b.transform.localScale.y * 0.5f;
+                var lp = b.transform.localPosition;
+                lp.y   = halfHeight;
+                b.transform.localPosition = lp;
+            }
         }
 
         private static bool InstantiateEditorMarker(LocationData locationData, LocationObject obj, LocationInstance loc,
