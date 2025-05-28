@@ -11,6 +11,8 @@ namespace LocationLoader
         public static Mod mod { get; private set; }
         public static GameObject modObject { get; private set; }
 
+        public static Texture2D climate_map { get; private set; }
+
 	    private static Mod WODBiomesMod;
 	    public static bool WODBiomesModEnabled;
 
@@ -22,6 +24,15 @@ namespace LocationLoader
         {
             // Get mod
             mod = initParams.Mod;
+
+            mod.LoadAllAssetsFromBundle();
+
+            climate_map = mod.GetAsset<Texture2D>("climate_map");
+            if (climate_map == null)
+                Debug.LogError("[LocationModLoader] climate_map asset not found!");
+            else
+                Debug.Log($"[LocationModLoader] climate_map loaded: {climate_map.width}×{climate_map.height}; readable={climate_map.isReadable}");
+
 
             modObject = new GameObject("LocationLoader");
             modObject.AddComponent<LocationLoader>();

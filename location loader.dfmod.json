@@ -20,6 +20,8 @@
         "Assets/Game/Mods/LocationLoader/Scripts/LocationObjectExtraData.cs",
         "Assets/Game/Mods/LocationLoader/Scripts/LocationResourceManager.cs",
         "Assets/Game/Mods/LocationLoader/Scripts/LocationRMBVariant.cs",
-        "Assets/Game/Mods/LocationLoader/Scripts/LocationTerrainNature.cs"
+        "Assets/Game/Mods/LocationLoader/Scripts/LocationTerrainNature.cs",
+        "Assets/Game/Mods/LocationLoader/Assets/Maps/climate_map.png",
+        "Assets/Game/Mods/LocationLoader/Scripts/BiomesClimateSwap.cs"
     ]
 }
