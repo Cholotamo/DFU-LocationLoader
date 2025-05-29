@@ -14,18 +14,64 @@ using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Game.MagicAndEffects;
 using DaggerfallWorkshop.Utility.AssetInjection;
 
+/// <summary>
+/// Attach to a trigger BoxCollider for barred doors.
+/// Intercepts clicks via a custom raycast including triggers.
+/// </summary>
 public class BarredDoor : MonoBehaviour, IPlayerActivable
 {
-    // set by your LocationLoader when you Create the trigger
+    // set by LocationLoader when you create the trigger
     public bool hasDungeon = false;
     public int dungeonRegion;
     public int dungeonLocation;
 
-    // Remember the spot to return the player to
+    // remember where to return on exit
     Vector3 _exitReturnPos;
 
     bool _listeningInterior = false;
     bool _listeningExterior = false;
+
+    BoxCollider _bc;
+
+    void Awake()
+    {
+        // cache the BoxCollider and ensure it's a trigger
+        _bc = GetComponent<BoxCollider>();
+        if (_bc == null)
+            Debug.LogError("BarredDoor requires a BoxCollider component");
+        else
+            _bc.isTrigger = true;
+    }
+
+    void Update()
+    {
+        // on left mouse button down, perform custom raycast that includes triggers
+        if (Input.GetMouseButtonDown(0))
+        {
+            Camera cam = Camera.main;
+            if (cam == null) return;
+
+            Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+            RaycastHit[] hits = Physics.RaycastAll(
+                ray,
+                100f,
+                Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Collide);
+
+            // sort by distance
+            Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+            // look for our trigger before any other
+            foreach (var hit in hits)
+            {
+                if (hit.collider == _bc)
+                {
+                    Activate(hit);
+                    break;
+                }
+            }
+        }
+    }
 
     public void Activate(RaycastHit hit)
     {
@@ -40,17 +86,17 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
         // record the current external position
         _exitReturnPos = GameManager.Instance.PlayerGPS.gameObject.transform.position;
 
-        // only subscribe once
+        // subscribe once for dungeon interior event
         if (!_listeningInterior)
         {
             PlayerEnterExit.OnTransitionDungeonInterior += OnDungeonInterior;
             _listeningInterior = true;
         }
 
-        // disable the micro-map for our hack
+        // disable micro-map
         DaggerfallUnity.Settings.AutomapDisableMicroMap = true;
 
-        // kick off the interior load
+        // load and enter dungeon
         DFLocation loc = DaggerfallUnity.Instance.ContentReader
             .MapFileReader
             .GetLocation(dungeonRegion, dungeonLocation);
@@ -64,7 +110,7 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
 
     private void OnDungeonInterior(PlayerEnterExit.TransitionEventArgs args)
     {
-        // no longer need this
+        // unsubscribe
         PlayerEnterExit.OnTransitionDungeonInterior -= OnDungeonInterior;
         _listeningInterior = false;
 
@@ -75,16 +121,16 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
             return;
         }
 
-        // build the automap state
+        // build automap
         automap.UpdateAutomapStateOnWindowPush();
 
-        // clear that blank window hack
+        // clear blank window hack
         var ui = DaggerfallUI.UIManager;
         var tempWindow = new DaggerfallAutomapWindow(ui);
         ui.PushWindow(tempWindow);
         ui.PopWindow();
 
-        // subscribe to the “exit dungeon” event
+        // subscribe to exit event
         if (!_listeningExterior)
         {
             PlayerEnterExit.OnTransitionDungeonExterior += OnDungeonExterior;
@@ -94,19 +140,19 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
 
     private void OnDungeonExterior(PlayerEnterExit.TransitionEventArgs args)
     {
-        // only once
+        // unsubscribe
         PlayerEnterExit.OnTransitionDungeonExterior -= OnDungeonExterior;
         _listeningExterior = false;
 
-        // restore player position
+        // restore position
         var gpsGO = GameManager.Instance.PlayerGPS.gameObject;
         gpsGO.transform.position = _exitReturnPos;
 
-        // also update the “advanced” instance if you want:
         var adv = GameObject.Find("PlayerAdvanced");
         if (adv) adv.transform.position = _exitReturnPos + Vector3.up * 0.1f;
 
-        // re-enable your micro map if you want
+        // re-enable micro-map
         DaggerfallUnity.Settings.AutomapDisableMicroMap = false;
     }
 }
+
