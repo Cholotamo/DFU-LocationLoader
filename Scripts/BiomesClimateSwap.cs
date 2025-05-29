@@ -1,4 +1,6 @@
 using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
 using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Game.Utility.ModSupport;
 using DaggerfallWorkshop.Utility.AssetInjection;
@@ -11,6 +13,20 @@ namespace LocationLoader
     {
         const int    CUSTOM_ARCHIVE = 10030;
         static Color32 TriggerColor  = new Color32(255,165,0,255);
+
+        // pending swaps waiting for terrain to be ready
+        static bool isSubscribed = false;
+        static List<GameObject> pendingBlocks = new List<GameObject>();
+
+        static BiomesClimateSwap()
+        {
+            // subscribe once to StreamingWorld end-of-update event
+            if (!isSubscribed)
+            {
+                StreamingWorld.OnUpdateTerrainsEnd += OnUpdateTerrainsEnd;
+                isSubscribed = true;
+            }
+        }
 
         public static void ApplySwaps(GameObject rmbBlock)
         {
@@ -25,72 +41,61 @@ namespace LocationLoader
             int mapH = climate_map.height;
 
             var flats = rmbBlock.GetComponentsInChildren<Billboard>(true);
-            //Debug.Log($"[BiomesClimateSwap] Checking {flats.Length} billboards in {rmbBlock.name}");
-
             foreach (var b in flats)
             {
-                // 1) Only nature flats
                 if (b.Summary.FlatType != FlatTypes.Nature)
-                {
-                    //Debug.Log($"  ▶ Skipping non‐nature flat (type={b.Summary.FlatType})");
                     continue;
-                }
 
-                // 2) Try grabbing the terrain's MapPixelX/Y:
-                int mx = -1, my = -1;
                 var terrain = b.GetComponentInParent<DaggerfallTerrain>();
-                if (terrain != null)
+                if (terrain == null)
                 {
-                    mx = terrain.MapPixelX;
-                    my = terrain.MapPixelY;
-                    //Debug.Log($"  • Exterior flat; Terrain.MapPixel=({mx},{my})");
-                } else
-                {
-                    Debug.LogWarning($"  ▶ No Terrain or LocationData on {b.name}, skipping");
-                    continue;
+                    // schedule retry next update
+                    Debug.LogWarning($"[BiomesClimateSwap] Terrain not yet ready for {b.name}; deferring swap.");
+                    if (!pendingBlocks.Contains(rmbBlock))
+                        pendingBlocks.Add(rmbBlock);
+                    return;
                 }
 
-                // now do your bounds check, flip-Y and sample exactly as before:
+                int mx = terrain.MapPixelX;
+                int my = terrain.MapPixelY;
+
                 if (mx < 0 || mx >= mapW || my < 0 || my >= mapH)
                 {
-                    Debug.LogError($"  ✖ LocationData out of range: ({mx},{my}) vs map {mapW}×{mapH}");
+                    Debug.LogError($"[BiomesClimateSwap] LocationData out of range: ({mx},{my}) vs map {mapW}×{mapH}");
                     continue;
                 }
 
                 int ty = mapH - 1 - my;
                 Color32 c = climate_map.GetPixel(mx, ty);
-                //Debug.Log($"  • Sampled #{c.r:X2}{c.g:X2}{c.b:X2} at ({mx},{ty})");
-
-                // 5) Compare
-                bool match = (c.r == TriggerColor.r &&
-                              c.g == TriggerColor.g &&
-                              c.b == TriggerColor.b);
-
-                if (!match)
-                {
-                    //Debug.Log("    – Color did NOT match trigger; skipping");
+                if (c.r != TriggerColor.r || c.g != TriggerColor.g || c.b != TriggerColor.b)
                     continue;
-                }
 
-                //Debug.Log($"    ✓ Color matched #FFA500 — swapping archive on flat record {b.Summary.Record}");
-
-                // 6) Perform swap
+                // swap material
                 b.SetMaterial(CUSTOM_ARCHIVE, b.Summary.Record);
-
                 if (!LocationModLoader.VEModEnabled)
-                {
                     b.transform.localScale *= 2f;
-                    //Debug.Log("      • Scaled flat by 2×");
-                }
 
-                // 7) Re-ground
+                // re-ground
                 float halfH = b.Summary.Size.y * b.transform.localScale.y * 0.5f;
                 var lp = b.transform.localPosition;
                 lp.y = halfH;
                 b.transform.localPosition = lp;
-                //Debug.Log($"      • Re-grounded to y={lp.y:F3}");
+            }
+        }
+
+        static void OnUpdateTerrainsEnd()
+        {
+            // retry all pending swaps now that terrains are (re)parented
+            if (pendingBlocks.Count == 0)
+                return;
+
+            var retryList = new List<GameObject>(pendingBlocks);
+            pendingBlocks.Clear();
+            foreach (var block in retryList)
+            {
+                if (block != null)
+                    ApplySwaps(block);
             }
         }
     }
 }
-

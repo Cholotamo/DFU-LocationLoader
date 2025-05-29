@@ -400,8 +400,8 @@ namespace LocationLoader
                             // Attach your popup script
                             var bd = triggerGO.AddComponent<BarredDoor>();
                             bd.hasDungeon        = false;
-                            bd.dungeonRegion     = 0;
-                            bd.dungeonLocation   = 140;
+                            bd.dungeonRegion     = 43;
+                            bd.dungeonLocation   = 161;
                         }
                     }
                     else

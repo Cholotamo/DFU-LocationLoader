@@ -56,7 +56,7 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
             .GetLocation(dungeonRegion, dungeonLocation);
         if (!loc.Loaded)
         {
-            DaggerfallUI.AddHUDText("Failed to load location 0-140.");
+            DaggerfallUI.AddHUDText("Failed to load location.");
             return;
         }
         enterExit.StartDungeonInterior(loc, preferEnterMarker: true, importEnemies: true);
