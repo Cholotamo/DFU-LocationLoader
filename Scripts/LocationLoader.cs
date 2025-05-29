@@ -360,6 +360,51 @@ namespace LocationLoader
 
                     // now swap any loose nature flats if WOD Biomes enabled:
                     if (LocationModLoader.WODBiomesModEnabled) BiomesClimateSwap.ApplySwaps(rmbBlock);
+
+                    // Grab the StaticDoors component from your RMB block
+                    var doorCollection = rmbBlock.GetComponent<DaggerfallStaticDoors>();
+                    if (doorCollection != null && doorCollection.Doors != null)
+                    {
+                        // 0) First, disable all the DF-driven doors so they don’t respond at all
+                        var doors = doorCollection.Doors;
+                        for (int i = 0; i < doors.Length; i++)
+                        {
+                            doors[i].doorType = DoorTypes.None;
+                        }
+                        doorCollection.Doors = doors;
+
+                        // 1) Now re-iterate and add your “barred” triggers in the right spot
+                        foreach (var door in doorCollection.Doors)
+                        {
+                            // Compute the local-to-block position
+                            Vector3 localDoorPos = door.buildingMatrix.MultiplyPoint3x4(door.centre);
+                            // Transform to world-space
+                            Vector3 worldCentre  = rmbBlock.transform.TransformPoint(localDoorPos);
+
+                            // Compute normal in world-space for orientation
+                            Vector3 localNormal  = door.buildingMatrix.MultiplyVector(door.normal);
+                            Vector3 worldNormal  = rmbBlock.transform.rotation * localNormal;
+
+                            // Create your trigger GameObject
+                            var triggerGO = new GameObject("BarredDoorTrigger");
+                            triggerGO.transform.parent   = rmbBlock.transform;
+                            triggerGO.transform.position = worldCentre;
+                            triggerGO.transform.rotation = Quaternion.LookRotation(worldNormal, Vector3.up);
+
+                            // Add the BoxCollider
+                            var bc = triggerGO.AddComponent<BoxCollider>();
+                            bc.isTrigger = true;
+                            // door.size is already the (thickness, height, width) in DF units
+                            bc.size = door.size;
+
+                            // Attach your popup script
+                            triggerGO.AddComponent<BarredDoor>();
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogWarning("No StaticDoors on RMB block—cannot add barred triggers.");
+                    }
                 }
             }
 
