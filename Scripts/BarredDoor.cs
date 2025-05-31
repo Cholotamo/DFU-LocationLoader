@@ -185,11 +185,14 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
         // 1) Restore the exterior‐world scene we cached at Activate():
         SaveLoadManager.RestoreCachedScene(streaming.SceneName);
 
-        // 2) Put the player back exactly where they clicked the barred door:
-        var gpsGO = gps.gameObject;
-        gpsGO.transform.position = _exitReturnPos;
+        // 2) Queue a reposition so that when the world finishes streaming back in,
+        //    the player is placed precisely at the saved Unity‐space coordinate.
+        //    We use RepositionMethods.Offset to move the camera/player to _exitReturnPos.
+        streaming.SetAutoReposition(StreamingWorld.RepositionMethods.Offset, _exitReturnPos);
 
-        // 3) Also put “PlayerAdvanced” one unit above so collisions line up:
+        // 3) Also put “PlayerAdvanced” one unit above so collisions line up.
+        //    Note: we still nudge PlayerAdvanced immediately, but the actual character
+        //    will be teleported by the StreamingWorld when it finishes loading.
         var adv = GameObject.Find("PlayerAdvanced");
         if (adv) adv.transform.position = _exitReturnPos + Vector3.up * 0.1f;
 
