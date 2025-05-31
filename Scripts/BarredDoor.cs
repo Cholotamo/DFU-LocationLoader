@@ -1,34 +1,32 @@
 using UnityEngine;
 using System;
-using DaggerfallWorkshop.Utility;               // ← for StaticDoor
+using DaggerfallWorkshop.Utility;               // for StaticDoor
 using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
-using DaggerfallConnect.Utility;
 using DaggerfallWorkshop;
 using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Game.Serialization;
 using DaggerfallWorkshop.Game.UserInterfaceWindows;
 using DaggerfallWorkshop.Game.Entity;
-using DaggerfallWorkshop.Game.MagicAndEffects;
 using DaggerfallWorkshop.Utility.AssetInjection;
 
 /// <summary>
 /// Attach to a trigger BoxCollider for barred doors.
-/// Intercepts clicks via a custom raycast including triggers,
-/// then calls the real DF door transition so save/load works correctly.
+/// Intercepts clicks via a custom raycast including triggers.
+/// Also relies on FakeDungeonSaveDataHandler being set as your mod’s SaveDataInterface.
 /// </summary>
 public class BarredDoor : MonoBehaviour, IPlayerActivable
 {
-    // set by LocationLoader when you create this trigger
+    // set by LocationLoader when you create the trigger
     public bool hasDungeon = false;
     public int dungeonRegion;
     public int dungeonLocation;
 
-    // this is the “real” StaticDoor that our trigger is faking
+    // the real StaticDoor this trigger is faking
     [HideInInspector]
     public StaticDoor staticDoor;
 
-    // where to place the player again, once they exit
+    // remember exactly where to come back (local‐space position)
     Vector3 _exitReturnPos;
 
     bool _listeningInterior = false;
@@ -48,7 +46,7 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
 
     void Update()
     {
-        // When left‐click happens, do our own RaycastAll (with triggers) and see if we hit this BoxCollider first.
+        // Perform custom raycast on Left‐click to detect triggers (including this one's BoxCollider)
         if (Input.GetMouseButtonDown(0))
         {
             Camera cam = Camera.main;
@@ -84,11 +82,14 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
 
         var enterExit = GameManager.Instance.PlayerEnterExit;
         var gps       = GameManager.Instance.PlayerGPS;
+        var streaming = GameManager.Instance.StreamingWorld;
 
-        // 1) remember exactly where we were standing, so we can restore on exit:
+        // 1) Record our “fake” exterior coords and exact local‐position so that we can come back:
+        int fakeWX = gps.WorldX;
+        int fakeWZ = gps.WorldZ;
         _exitReturnPos = gps.transform.position;
 
-        // grab the DFLocation for that region/location…
+        // 2) Load the DFLocation for the real dungeon:
         DFLocation loc = DaggerfallUnity.Instance.ContentReader
             .MapFileReader
             .GetLocation(dungeonRegion, dungeonLocation);
@@ -98,29 +99,36 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
             return;
         }
 
-        // 2) before actually entering the dungeon, “lie” to GPS so that Save/Load
-        //    will treat us as “inside dungeon at entryX/entryZ.”
-        //      → this prevents Respawner from trying to load a dungeon at our old exterior coords
-        int entryX = loc.Exterior.RecordElement.Header.X;
-        int entryZ = loc.Exterior.RecordElement.Header.Y;
-        gps.WorldX = entryX;
-        gps.WorldZ = entryZ;
+        // 3) Extract “real” tile‐coords of that dungeon’s entrance:
+        int realWX = loc.Exterior.RecordElement.Header.X;
+        int realWZ = loc.Exterior.RecordElement.Header.Y;
 
-        // 3) cache exterior world scene for save/restore
-        SaveLoadManager.CacheScene(GameManager.Instance.StreamingWorld.SceneName);
+        // 4) Tell our save‐data handler that we are now “in a fake dungeon”:
+        FakeDungeonSaveDataHandler.Instance.CurrentData.wasInFakeDungeon  = true;
+        FakeDungeonSaveDataHandler.Instance.CurrentData.fakeWorldX       = fakeWX;
+        FakeDungeonSaveDataHandler.Instance.CurrentData.fakeWorldZ       = fakeWZ;
+        FakeDungeonSaveDataHandler.Instance.CurrentData.realWorldX       = realWX;
+        FakeDungeonSaveDataHandler.Instance.CurrentData.realWorldZ       = realWZ;
+        FakeDungeonSaveDataHandler.Instance.CurrentData.exitReturnPos    = _exitReturnPos;
 
-        // subscribe once to the “we just loaded a dungeon” event
+        // 5) Before we actually transition, override GPS so the save system thinks “we’re on the real dungeon tile”:
+        gps.WorldX = realWX;
+        gps.WorldZ = realWZ;
+
+        // 6) Cache the exterior world scene now, so it can be re‐loaded on exit:
+        SaveLoadManager.CacheScene(streaming.SceneName);
+
+        // 7) Subscribe once for “we just finished loading into a dungeon interior”:
         if (!_listeningInterior)
         {
             PlayerEnterExit.OnTransitionDungeonInterior += OnDungeonInterior;
             _listeningInterior = true;
         }
 
-        // disable micro‐map
+        // 8) Disable micro‐map (same as Daggerfall’s own code):
         DaggerfallUnity.Settings.AutomapDisableMicroMap = true;
 
-        // 4) now call DF’s real TransitionDungeonInterior passing our fake StaticDoor,
-        //    so that everything (including Save/Load) behaves exactly as if the player clicked a real door.
+        // 9) Now call the “real” door transition:
         enterExit.TransitionDungeonInterior(
             doorOwner: transform,
             door:       staticDoor,
@@ -134,7 +142,7 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
         PlayerEnterExit.OnTransitionDungeonInterior -= OnDungeonInterior;
         _listeningInterior = false;
 
-        // Build the automap state so the player sees the dungeon automap:
+        // Build the automap:
         var automap = Automap.instance;
         if (automap == null)
         {
@@ -143,17 +151,17 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
         }
         automap.UpdateAutomapStateOnWindowPush();
 
-        // Clear that “blank” automap window hack:
+        // Pop that blank window hack:
         var ui = DaggerfallUI.UIManager;
         var tempWindow = new DaggerfallAutomapWindow(ui);
         ui.PushWindow(tempWindow);
         ui.PopWindow();
 
-        // Now that we’re inside the dungeon, cache that new dungeon scene as well:
+        // Cache the dungeon‐scene we just created (so it can be restored on reload/exit):
         var dungeonGO = GameManager.Instance.PlayerEnterExit.Dungeon.gameObject;
         SaveLoadManager.CacheScene(dungeonGO.name);
 
-        // Finally, hook OnTransitionDungeonExterior so we can restore when they leave:
+        // Now subscribe to “we’re leaving the dungeon exterior”:
         if (!_listeningExterior)
         {
             PlayerEnterExit.OnTransitionDungeonExterior += OnDungeonExterior;
@@ -163,25 +171,33 @@ public class BarredDoor : MonoBehaviour, IPlayerActivable
 
     private void OnDungeonExterior(PlayerEnterExit.TransitionEventArgs args)
     {
+        var streaming = GameManager.Instance.StreamingWorld;
+        var gps       = GameManager.Instance.PlayerGPS;
+
+        // 5) Restore GPS.WorldX/WorldZ back to the “fake” exterior coords:
+        gps.WorldX = FakeDungeonSaveDataHandler.Instance.CurrentData.fakeWorldX;
+        gps.WorldZ = FakeDungeonSaveDataHandler.Instance.CurrentData.fakeWorldZ;
+
         // Unsubscribe:
         PlayerEnterExit.OnTransitionDungeonExterior -= OnDungeonExterior;
         _listeningExterior = false;
 
-        var streaming = GameManager.Instance.StreamingWorld;
-        var gps       = GameManager.Instance.PlayerGPS;
-
-        // 5) restore the exterior‐world scene we cached back in Activate()
+        // 1) Restore the exterior‐world scene we cached at Activate():
         SaveLoadManager.RestoreCachedScene(streaming.SceneName);
 
-        // 6) put the player back exactly where they clicked the barred door
+        // 2) Put the player back exactly where they clicked the barred door:
         var gpsGO = gps.gameObject;
         gpsGO.transform.position = _exitReturnPos;
 
+        // 3) Also put “PlayerAdvanced” one unit above so collisions line up:
         var adv = GameObject.Find("PlayerAdvanced");
         if (adv) adv.transform.position = _exitReturnPos + Vector3.up * 0.1f;
 
-        // 7) re‐enable micro‐map
+        // 4) Re‐enable micro‐map:
         DaggerfallUnity.Settings.AutomapDisableMicroMap = false;
+
+        // 6) Mark “no longer in fake dungeon” so that future saves behave normally:
+        FakeDungeonSaveDataHandler.Instance.CurrentData.wasInFakeDungeon = false;
     }
 }
 

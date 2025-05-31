@@ -23,6 +23,7 @@
         "Assets/Game/Mods/LocationLoader/Scripts/LocationTerrainNature.cs",
         "Assets/Game/Mods/LocationLoader/Assets/Maps/climate_map.png",
         "Assets/Game/Mods/LocationLoader/Scripts/BiomesClimateSwap.cs",
-        "Assets/Game/Mods/LocationLoader/Scripts/BarredDoor.cs"
+        "Assets/Game/Mods/LocationLoader/Scripts/BarredDoor.cs",
+        "Assets/Game/Mods/LocationLoader/Scripts/FakeDungeonSaveDataHandler.cs"
     ]
 }
