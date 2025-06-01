@@ -52,6 +52,9 @@ namespace LocationLoader
         public int  dungeonRegion;
         public int  dungeonLocation;
         public Vector3 exitReturnPos;
+        public Vector3 dungeonPlayerPosition;
+        public Vector3 exitReturnRotEuler;
+        public Vector3 dungeonPlayerRotEuler;
     }
 
     public class LocationLootSerializer : MonoBehaviour, ISerializableGameObject
@@ -505,7 +508,10 @@ namespace LocationLoader
     {
         public bool   wasInFakeDungeon;
         public int    dungeonRegion, dungeonLocation;
+        public Vector3 dungeonPlayerPosition;
         public Vector3 exitReturnPos;
+        public Vector3 exitReturnRotEuler;
+        public Vector3 dungeonPlayerRotEuler;
 
         public static ulong ToObjectLoadId(ulong locationId, int objectId)
         {
@@ -694,7 +700,10 @@ namespace LocationLoader
                     wasInFakeDungeon = false,
                     dungeonRegion    = 0,
                     dungeonLocation  = 0,
-                    exitReturnPos    = Vector3.zero
+                    dungeonPlayerPosition    = Vector3.zero,
+                    exitReturnPos    = Vector3.zero,
+                    exitReturnRotEuler    = Vector3.zero,
+                    dungeonPlayerRotEuler    = Vector3.zero
                 }
             };
         }
@@ -727,7 +736,10 @@ namespace LocationLoader
                     wasInFakeDungeon = this.wasInFakeDungeon,
                     dungeonRegion    = this.dungeonRegion,
                     dungeonLocation  = this.dungeonLocation,
-                    exitReturnPos    = this.exitReturnPos
+                    dungeonPlayerPosition = this.dungeonPlayerPosition,
+                    exitReturnPos    = this.exitReturnPos,
+                    exitReturnRotEuler    = this.exitReturnRotEuler,
+                    dungeonPlayerRotEuler    = this.dungeonPlayerRotEuler
                 }
             };
 
@@ -752,7 +764,10 @@ namespace LocationLoader
             this.wasInFakeDungeon = data.dungeonData.wasInFakeDungeon;
             this.dungeonRegion    = data.dungeonData.dungeonRegion;
             this.dungeonLocation  = data.dungeonData.dungeonLocation;
+            this.dungeonPlayerPosition = data.dungeonData.dungeonPlayerPosition;
             this.exitReturnPos    = data.dungeonData.exitReturnPos;
+            this.exitReturnRotEuler    = data.dungeonData.exitReturnRotEuler;
+            this.dungeonPlayerRotEuler    = data.dungeonData.dungeonPlayerRotEuler;
         }
     }
 }

@@ -1,6 +1,6 @@
 using UnityEngine;
 using System;
-using DaggerfallWorkshop.Utility;               // for StaticDoor
+using DaggerfallWorkshop.Utility;
 using DaggerfallConnect;
 using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop;
@@ -30,6 +30,7 @@ namespace LocationLoader
 
         // remember exactly where to come back (local-space position)
         Vector3 _exitReturnPos;
+        Vector3 _exitReturnRotEuler;
 
         bool _listeningInterior = false;
         bool _listeningExterior = false;
@@ -46,20 +47,12 @@ namespace LocationLoader
             else
                 _bc.isTrigger = true;
 
+            var gps       = GameManager.Instance.PlayerGPS;
+
             // fetch the single SaveDataInterface instance
             _saveInterface = LocationModLoader.modObject.GetComponent<LocationSaveDataInterface>();
             if (_saveInterface == null)
                 Debug.LogError("BarredDoor: LocationSaveDataInterface not found on modObject!");
-
-            // If we loaded while already in a fake dungeon, restore exit pos immediately
-            if (_saveInterface != null && _saveInterface.wasInFakeDungeon)
-            {
-                _exitReturnPos = _saveInterface.exitReturnPos;
-                // We also want to start listening for an exit event,
-                // even though Activate() wasn't called this session.
-                PlayerEnterExit.OnTransitionDungeonExterior += OnDungeonExterior;
-                _listeningExterior = true;
-            }
         }
 
         void Update()
@@ -104,6 +97,8 @@ namespace LocationLoader
 
             // 1) Record our “fake” exterior coords and exact local-space position
             _exitReturnPos = gps.transform.position;
+            _exitReturnRotEuler = transform.rotation.eulerAngles;
+
 
             // 2) Load the DFLocation for the real dungeon:
             DFLocation loc = DaggerfallUnity.Instance.ContentReader
@@ -120,6 +115,7 @@ namespace LocationLoader
             _saveInterface.dungeonRegion       = dungeonRegion;
             _saveInterface.dungeonLocation     = dungeonLocation;
             _saveInterface.exitReturnPos    = _exitReturnPos;
+            _saveInterface.exitReturnRotEuler  = _exitReturnRotEuler;
 
             // 6) Cache the exterior world scene now, so it can be re-loaded on exit
             SaveLoadManager.CacheScene(streaming.SceneName);
@@ -163,42 +159,6 @@ namespace LocationLoader
             // Cache the dungeon-scene we just created (so it can be restored on reload/exit)
             var dungeonGO = GameManager.Instance.PlayerEnterExit.Dungeon.gameObject;
             SaveLoadManager.CacheScene(dungeonGO.name);
-
-            // Now subscribe to “we’re leaving the dungeon exterior”
-            if (!_listeningExterior)
-            {
-                PlayerEnterExit.OnTransitionDungeonExterior += OnDungeonExterior;
-                _listeningExterior = true;
-            }
-        }
-
-        private void OnDungeonExterior(PlayerEnterExit.TransitionEventArgs args)
-        {
-            var streaming = GameManager.Instance.StreamingWorld;
-            var gps       = GameManager.Instance.PlayerGPS;
-
-            // Unsubscribe from the exit event
-            PlayerEnterExit.OnTransitionDungeonExterior -= OnDungeonExterior;
-            _listeningExterior = false;
-
-            // 2) Restore the exterior-world scene we cached at Activate()
-            SaveLoadManager.RestoreCachedScene(streaming.SceneName);
-
-            // 3) Queue a reposition so that when the world finishes streaming back in,
-            //    the player is placed precisely at the saved Unity-space coordinate (_exitReturnPos)
-            streaming.SetAutoReposition(
-                StreamingWorld.RepositionMethods.Offset,
-                _exitReturnPos);
-
-            // 4) Also put “PlayerAdvanced” one unit above so collisions line up
-            var adv = GameObject.Find("PlayerAdvanced");
-            if (adv) adv.transform.position = _exitReturnPos + Vector3.up * 0.1f;
-
-            // 5) Re-enable micro-map
-            DaggerfallUnity.Settings.AutomapDisableMicroMap = false;
-
-            // 6) Mark “no longer in fake dungeon” so that future saves behave normally:
-            _saveInterface.wasInFakeDungeon = false;
         }
     }
 
@@ -236,9 +196,6 @@ namespace LocationLoader
             if (!_saveInterface.wasInFakeDungeon)
                 return;
 
-            // 1) Restore GPS.WorldX/Z to the saved “fake exterior” coords
-            var gps = GameManager.Instance.PlayerGPS;
-
             // 2) Restore the cached exterior scene
             var streaming = GameManager.Instance.StreamingWorld;
             SaveLoadManager.RestoreCachedScene(streaming.SceneName);
@@ -253,6 +210,18 @@ namespace LocationLoader
             var adv = GameObject.Find("PlayerAdvanced");
             if (adv) adv.transform.position = _saveInterface.exitReturnPos + Vector3.up * 0.1f;
 
+            // 6) Finally, rotate player so they look away from the door:
+            Vector3 doorEuler = _saveInterface.exitReturnRotEuler;
+            float playerYaw   = doorEuler.y;
+
+            var mouseLook = GameManager.Instance.PlayerMouseLook;
+            if (mouseLook != null)
+            {
+                // Build a forward‐vector from your saved yaw (in degrees):
+                Vector3 forward = Quaternion.Euler(0f, playerYaw, 0f) * Vector3.forward;
+                mouseLook.SetFacing(forward);
+            }
+
             // 5) Re-enable the micro-map
             DaggerfallUnity.Settings.AutomapDisableMicroMap = false;
 
@@ -262,8 +231,8 @@ namespace LocationLoader
     }
 
     /// <summary>
-    /// If the game is loaded with wasInFakeDungeon=true, wait for the respawner to finish,
-    /// then immediately start the dungeon (Region 43, Location 161).  
+    /// If the game is loaded with wasInFakeDungeon=true, start the saved dungeon
+    /// and then teleport once we receive OnTransitionDungeonInterior.
     /// Attach this to the same GameObject as LocationSaveDataInterface (mod’s root object).
     /// </summary>
     public class FakeDungeonLoader : MonoBehaviour
@@ -279,13 +248,29 @@ namespace LocationLoader
 
         void OnEnable()
         {
-            // Fire after the save is fully restored
             SaveLoadManager.OnLoad += OnGameLoaded;
         }
 
         void OnDisable()
         {
             SaveLoadManager.OnLoad -= OnGameLoaded;
+            PlayerEnterExit.OnTransitionDungeonInterior -= OnDungeonInteriorComplete;
+        }
+
+        void Update()
+        {
+            // As soon as we're inside a "fake" dungeon, keep updating the saved position every frame
+            if (_saveInterface != null && _saveInterface.wasInFakeDungeon)
+            {
+                var enterExit = GameManager.Instance.PlayerEnterExit;
+                var playerGO = GameManager.Instance.PlayerEntityBehaviour?.gameObject;
+                if (enterExit != null && playerGO != null)
+                {
+                    // Record the player's exact world-space position inside that dungeon:
+                    _saveInterface.dungeonPlayerPosition = GameManager.Instance.PlayerEntityBehaviour.transform.position;
+                    _saveInterface.dungeonPlayerRotEuler = playerGO.transform.rotation.eulerAngles;  // <— store in‐dungeon rotation
+                }
+            }
         }
 
         private void OnGameLoaded(SaveData_v1 _)
@@ -299,19 +284,26 @@ namespace LocationLoader
                 return;
             }
 
-            Debug.Log("[FakeDungeonLoader] Detected wasInFakeDungeon == true. Now starting dungeon interior.");
+            Debug.Log("[FakeDungeonLoader] Detected wasInFakeDungeon == true. Subscribing to OnTransitionDungeonInterior.");
+
+            // Subscribe to the event that fires when the dungeon is fully laid out:
+            PlayerEnterExit.OnTransitionDungeonInterior += OnDungeonInteriorComplete;
+
+            int savedRegion   = _saveInterface.dungeonRegion;
+            int savedLocation = _saveInterface.dungeonLocation;
 
             DFLocation loc = DaggerfallUnity.Instance.ContentReader
                 .MapFileReader
-                .GetLocation(_saveInterface.dungeonRegion, _saveInterface.dungeonLocation);
+                .GetLocation(savedRegion, savedLocation);
 
             if (!loc.Loaded)
             {
-                Debug.LogError($"[FakeDungeonLoader] Failed to load DFLocation {_saveInterface.dungeonRegion}-{_saveInterface.dungeonLocation}.");
+                Debug.LogError($"[FakeDungeonLoader] Failed to load DFLocation {savedRegion}-{savedLocation}.");
+                PlayerEnterExit.OnTransitionDungeonInterior -= OnDungeonInteriorComplete;
                 return;
             }
 
-            // Disable the micro‐map just like BarredDoor does:
+            // Disable micro‐map exactly like BarredDoor does:
             DaggerfallUnity.Settings.AutomapDisableMicroMap = true;
             Debug.Log("[FakeDungeonLoader] Calling StartDungeonInterior(...) now.");
 
@@ -319,6 +311,38 @@ namespace LocationLoader
                 loc,
                 preferEnterMarker: true,
                 importEnemies: true);
+        }
+
+        private void OnDungeonInteriorComplete(PlayerEnterExit.TransitionEventArgs args)
+        {
+            // Unsubscribe immediately—one‐time only
+            PlayerEnterExit.OnTransitionDungeonInterior -= OnDungeonInteriorComplete;
+
+            if (_saveInterface == null)
+                return;
+
+            Vector3 savedPos = _saveInterface.dungeonPlayerPosition;
+            Vector3 savedRot = _saveInterface.dungeonPlayerRotEuler;
+
+            var playerGO = GameManager.Instance.PlayerEntityBehaviour?.gameObject;
+            if (playerGO != null)
+            {
+                playerGO.transform.position = savedPos;
+                Debug.Log($"[FakeDungeonLoader] Teleported player to saved dungeon position {savedPos}");
+            }
+
+            // 2) Restore yaw via PlayerMouseLook
+            //    We only care about Yaw (rotation around Y-axis), not pitch/roll.
+            float savedYaw = _saveInterface.dungeonPlayerRotEuler.y;
+            // Build a forward vector from that yaw:
+            Vector3 forward = Quaternion.Euler(0f, savedYaw, 0f) * Vector3.forward;
+
+            var mouseLook = GameManager.Instance.PlayerMouseLook;
+            if (mouseLook != null)
+            {
+                mouseLook.SetFacing(forward);
+                Debug.Log($"[FakeDungeonLoader] Set camera facing to yaw={savedYaw}° (forward={forward}).");
+            }
         }
     }
 }
