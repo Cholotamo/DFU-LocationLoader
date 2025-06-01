@@ -33,11 +33,24 @@ namespace LocationLoader
             else
                 Debug.Log($"[LocationModLoader] climate_map loaded: {climate_map.width}×{climate_map.height}; readable={climate_map.isReadable}");
 
-
+            // Create a single root GameObject for this mod
             modObject = new GameObject("LocationLoader");
+
+            // Attach main loader component
             modObject.AddComponent<LocationLoader>();
-            mod.SaveDataInterface = modObject.AddComponent<LocationSaveDataInterface>();
+
+            // 1) Attach the save‐data handler
+            var saveInterface = modObject.AddComponent<LocationSaveDataInterface>();
+            mod.SaveDataInterface = saveInterface;
+
+            // 2) ALSO attach DungeonExitHandler and FakeDungeonLoader so they can find LocationSaveDataInterface
+            modObject.AddComponent<DungeonExitHandler>();
+            modObject.AddComponent<FakeDungeonLoader>();
+
+            // 3) Other components
             modObject.AddComponent<LocationResourceManager>();
+
+            // Assign message receiver and mark mod as ready
             mod.MessageReceiver = MessageReceiver;
             mod.IsReady = true;
 

@@ -49,10 +49,8 @@ namespace LocationLoader
     public class LLDungeonSaveData
     {
         public bool wasInFakeDungeon;
-        public int  fakeWorldX;
-        public int  fakeWorldZ;
-        public int  realWorldX;
-        public int  realWorldZ;
+        public int  dungeonRegion;
+        public int  dungeonLocation;
         public Vector3 exitReturnPos;
     }
 
@@ -506,7 +504,7 @@ namespace LocationLoader
     public class LocationSaveDataInterface : MonoBehaviour, IHasModSaveData
     {
         public bool   wasInFakeDungeon;
-        public int    fakeWorldX, fakeWorldZ, realWorldX, realWorldZ;
+        public int    dungeonRegion, dungeonLocation;
         public Vector3 exitReturnPos;
 
         public static ulong ToObjectLoadId(ulong locationId, int objectId)
@@ -694,10 +692,8 @@ namespace LocationLoader
                 dungeonData     = new LLDungeonSaveData
                 {
                     wasInFakeDungeon = false,
-                    fakeWorldX       = 0,
-                    fakeWorldZ       = 0,
-                    realWorldX       = 0,
-                    realWorldZ       = 0,
+                    dungeonRegion    = 0,
+                    dungeonLocation  = 0,
                     exitReturnPos    = Vector3.zero
                 }
             };
@@ -729,10 +725,8 @@ namespace LocationLoader
                 dungeonData = new LLDungeonSaveData
                 {
                     wasInFakeDungeon = this.wasInFakeDungeon,
-                    fakeWorldX       = this.fakeWorldX,
-                    fakeWorldZ       = this.fakeWorldZ,
-                    realWorldX       = this.realWorldX,
-                    realWorldZ       = this.realWorldZ,
+                    dungeonRegion    = this.dungeonRegion,
+                    dungeonLocation  = this.dungeonLocation,
                     exitReturnPos    = this.exitReturnPos
                 }
             };
@@ -756,10 +750,8 @@ namespace LocationLoader
 
             // ← HERE: restore your dungeon fields
             this.wasInFakeDungeon = data.dungeonData.wasInFakeDungeon;
-            this.fakeWorldX       = data.dungeonData.fakeWorldX;
-            this.fakeWorldZ       = data.dungeonData.fakeWorldZ;
-            this.realWorldX       = data.dungeonData.realWorldX;
-            this.realWorldZ       = data.dungeonData.realWorldZ;
+            this.dungeonRegion    = data.dungeonData.dungeonRegion;
+            this.dungeonLocation  = data.dungeonData.dungeonLocation;
             this.exitReturnPos    = data.dungeonData.exitReturnPos;
         }
     }

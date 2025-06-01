@@ -103,8 +103,6 @@ namespace LocationLoader
             var streaming = GameManager.Instance.StreamingWorld;
 
             // 1) Record our “fake” exterior coords and exact local-space position
-            int fakeWX = gps.WorldX;
-            int fakeWZ = gps.WorldZ;
             _exitReturnPos = gps.transform.position;
 
             // 2) Load the DFLocation for the real dungeon:
@@ -117,21 +115,11 @@ namespace LocationLoader
                 return;
             }
 
-            // 3) Extract “real” tile-coords of that dungeon’s entrance:
-            int realWX = loc.Exterior.RecordElement.Header.X;
-            int realWZ = loc.Exterior.RecordElement.Header.Y;
-
             // 4) Tell our save-data handler that we are now “in a fake dungeon”
             _saveInterface.wasInFakeDungeon = true;
-            _saveInterface.fakeWorldX       = fakeWX;
-            _saveInterface.fakeWorldZ       = fakeWZ;
-            _saveInterface.realWorldX       = realWX;
-            _saveInterface.realWorldZ       = realWZ;
+            _saveInterface.dungeonRegion       = dungeonRegion;
+            _saveInterface.dungeonLocation     = dungeonLocation;
             _saveInterface.exitReturnPos    = _exitReturnPos;
-
-            // 5) Override GPS so the save system thinks “we’re on the real dungeon tile”
-            gps.WorldX = realWX;
-            gps.WorldZ = realWZ;
 
             // 6) Cache the exterior world scene now, so it can be re-loaded on exit
             SaveLoadManager.CacheScene(streaming.SceneName);
@@ -146,12 +134,9 @@ namespace LocationLoader
             // 8) Disable micro-map (same as Daggerfall’s own code)
             DaggerfallUnity.Settings.AutomapDisableMicroMap = true;
 
-            // 9) Now call the “real” door transition
-            enterExit.TransitionDungeonInterior(
-                doorOwner: transform,
-                door:       staticDoor,
-                location:   loc,
-                doFade:     true);
+            // 9) Now start the dungeon
+            enterExit.StartDungeonInterior(loc, preferEnterMarker: true, importEnemies: true);
+
         }
 
         private void OnDungeonInterior(PlayerEnterExit.TransitionEventArgs args)
@@ -191,10 +176,6 @@ namespace LocationLoader
         {
             var streaming = GameManager.Instance.StreamingWorld;
             var gps       = GameManager.Instance.PlayerGPS;
-
-            // 1) Restore GPS.WorldX/WorldZ back to the “fake” exterior coords
-            gps.WorldX = _saveInterface.fakeWorldX;
-            gps.WorldZ = _saveInterface.fakeWorldZ;
 
             // Unsubscribe from the exit event
             PlayerEnterExit.OnTransitionDungeonExterior -= OnDungeonExterior;
@@ -257,8 +238,6 @@ namespace LocationLoader
 
             // 1) Restore GPS.WorldX/Z to the saved “fake exterior” coords
             var gps = GameManager.Instance.PlayerGPS;
-            gps.WorldX = _saveInterface.fakeWorldX;
-            gps.WorldZ = _saveInterface.fakeWorldZ;
 
             // 2) Restore the cached exterior scene
             var streaming = GameManager.Instance.StreamingWorld;
@@ -281,5 +260,65 @@ namespace LocationLoader
             _saveInterface.wasInFakeDungeon = false;
         }
     }
-}
 
+    /// <summary>
+    /// If the game is loaded with wasInFakeDungeon=true, wait for the respawner to finish,
+    /// then immediately start the dungeon (Region 43, Location 161).  
+    /// Attach this to the same GameObject as LocationSaveDataInterface (mod’s root object).
+    /// </summary>
+    public class FakeDungeonLoader : MonoBehaviour
+    {
+        LocationSaveDataInterface _saveInterface;
+
+        void Awake()
+        {
+            _saveInterface = GetComponent<LocationSaveDataInterface>();
+            if (_saveInterface == null)
+                Debug.LogError("FakeDungeonLoader: missing LocationSaveDataInterface on this GameObject!");
+        }
+
+        void OnEnable()
+        {
+            // Fire after the save is fully restored
+            SaveLoadManager.OnLoad += OnGameLoaded;
+        }
+
+        void OnDisable()
+        {
+            SaveLoadManager.OnLoad -= OnGameLoaded;
+        }
+
+        private void OnGameLoaded(SaveData_v1 _)
+        {
+            if (_saveInterface == null)
+                return;
+
+            if (!_saveInterface.wasInFakeDungeon)
+            {
+                Debug.Log("[FakeDungeonLoader] wasInFakeDungeon is false, skipping.");
+                return;
+            }
+
+            Debug.Log("[FakeDungeonLoader] Detected wasInFakeDungeon == true. Now starting dungeon interior.");
+
+            DFLocation loc = DaggerfallUnity.Instance.ContentReader
+                .MapFileReader
+                .GetLocation(_saveInterface.dungeonRegion, _saveInterface.dungeonLocation);
+
+            if (!loc.Loaded)
+            {
+                Debug.LogError($"[FakeDungeonLoader] Failed to load DFLocation {_saveInterface.dungeonRegion}-{_saveInterface.dungeonLocation}.");
+                return;
+            }
+
+            // Disable the micro‐map just like BarredDoor does:
+            DaggerfallUnity.Settings.AutomapDisableMicroMap = true;
+            Debug.Log("[FakeDungeonLoader] Calling StartDungeonInterior(...) now.");
+
+            GameManager.Instance.PlayerEnterExit.StartDungeonInterior(
+                loc,
+                preferEnterMarker: true,
+                importEnemies: true);
+        }
+    }
+}
