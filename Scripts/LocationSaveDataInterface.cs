@@ -1,6 +1,3 @@
-// LocationSaveDataInterface.cs
-// Combines the “loot” and “enemy” serializers plus the save‐data interface (v2).
-
 using System;
 using System.Linq;
 using System.Collections.Generic;
@@ -18,64 +15,69 @@ using DaggerfallWorkshop.Game.Questing;
 
 namespace LocationLoader
 {
-    // ------------------------------------------------------------------------------------
-    // (1) The original loot‐data struct (v1).  Nothing changed here.
-    // ------------------------------------------------------------------------------------
     [fsObject("v1")]
     public class LocationLootData_v1
     {
-        public ulong              loadID;
+        public ulong loadID;
         public LootContainerTypes containerType;
         public InventoryContainerImages containerImage;
-        public Vector3            currentPosition;
-        public Vector3            localPosition;
-        public Vector3            worldCompensation;
-        public float              heightScale;
-        public int                textureArchive;
-        public int                textureRecord;
-        public string             lootTableKey;
-        public string             entityName;
-        public int                stockedDate;
-        public bool               playerOwned;
-        public bool               customDrop;
-        public bool               isEnemyClass;
-        public ItemData_v1[]      items;
+        public Vector3 currentPosition;
+        public Vector3 localPosition;
+        public Vector3 worldCompensation;
+        public float heightScale;
+        public int textureArchive;
+        public int textureRecord;
+        public string lootTableKey;
+        public string entityName;
+        public int stockedDate;
+        public bool playerOwned;
+        public bool customDrop;
+        public bool isEnemyClass;
+        public ItemData_v1[] items;
     }
 
-    // ------------------------------------------------------------------------------------
-    // (2) The original per‐location save struct (v1).  Required by existing code.
-    // ------------------------------------------------------------------------------------
     [fsObject("v1")]
     public struct LocationSaveData_v1
     {
-        public ulong[]              clearedEnemies;
-        public EnemyData_v1[]       activeEnemies;
+        public ulong[] clearedEnemies;
+        public EnemyData_v1[] activeEnemies;
         public LocationLootData_v1[] lootContainers;
+        public LLDungeonSaveData      dungeonData;
     }
 
-    // ------------------------------------------------------------------------------------
-    // (3) LocationLootSerializer now exposes “public bool Activated { get; set; }” and
-    //     makes its “DaggerfallLoot loot” field public.  Other scripts expect that.
-    // ------------------------------------------------------------------------------------
+    [fsObject("v1")]
+    public class LLDungeonSaveData
+    {
+        public bool wasInFakeDungeon;
+        public int  fakeWorldX;
+        public int  fakeWorldZ;
+        public int  realWorldX;
+        public int  realWorldZ;
+        public Vector3 exitReturnPos;
+    }
+
     public class LocationLootSerializer : MonoBehaviour, ISerializableGameObject
     {
-        #region Fields
-        public DaggerfallLoot loot;                         // <— made public
-        Vector3             worldCompensation;
-        private LocationSaveDataInterface saveDataInterface;
-        #endregion
+        public
 
-        #region Properties
-        // Exposed so LocationSaveDataInterface can check whether to serialize this loot
+            #region Fields
+
+            DaggerfallLoot loot;
+
+        Vector3 worldCompensation;
+        private LocationSaveDataInterface saveDataInterface;
+
         public bool Activated { get; set; }
+
         #endregion
 
         #region Unity
+
         void Awake()
         {
             loot = GetComponent<DaggerfallLoot>();
             if (!loot)
-                throw new Exception("DaggerfallLoot not found on LocationLootSerializer GameObject.");
+                throw new Exception("DaggerfallLoot not found.");
             saveDataInterface = LocationModLoader.modObject.GetComponent<LocationSaveDataInterface>();
         }
 
@@ -92,7 +94,7 @@ namespace LocationLoader
         {
             if (LoadID != 0)
             {
-                if (saveDataInterface != null)
+                if (saveDataInterface)
                 {
                     if (Activated)
                         saveDataInterface.SerializeLoot(this);
@@ -100,12 +102,14 @@ namespace LocationLoader
                 }
             }
         }
+
         #endregion
 
         public bool TryLoadSavedData()
         {
             if (LoadID == 0)
                 return false;
+
             return saveDataInterface.TryDeserializeLoot(this);
         }
 
@@ -116,40 +120,47 @@ namespace LocationLoader
 
         public void InvalidateSave()
         {
-            if (LoadID != 0 && saveDataInterface != null)
+            if (LoadID != 0)
             {
-                saveDataInterface.DeregisterActiveSerializer(this);
+                if (saveDataInterface)
+                {
+                    // Don't serialize, this is used for when invalid loot is loaded on reused terrain
+                    saveDataInterface.DeregisterActiveSerializer(this);
+                }
+
                 loot = null;
                 Activated = false;
             }
         }
 
         #region ISerializableGameObject
-        public ulong LoadID => (loot ? loot.LoadID : 0);
-        public bool  ShouldSave => (loot != null && Activated);
+
+        public ulong LoadID => loot ? loot.LoadID : 0;
+        public bool ShouldSave => loot && Activated;
 
         public object GetSaveData()
         {
-            if (loot == null || !Activated)
+            if (!loot || !Activated)
                 return null;
 
-            var data = new LocationLootData_v1
+            // Create save data
+            LocationLootData_v1 data = new LocationLootData_v1
             {
-                loadID            = LoadID,
-                containerType     = loot.ContainerType,
-                containerImage    = loot.ContainerImage,
-                currentPosition   = loot.transform.position,
-                localPosition     = loot.transform.localPosition,
+                loadID = LoadID,
+                containerType = loot.ContainerType,
+                containerImage = loot.ContainerImage,
+                currentPosition = loot.transform.position,
+                localPosition = loot.transform.localPosition,
                 worldCompensation = worldCompensation,
-                heightScale       = loot.transform.localScale.y,
-                textureArchive    = loot.TextureArchive,
-                textureRecord     = loot.TextureRecord,
-                stockedDate       = loot.stockedDate,
-                playerOwned       = loot.playerOwned,
-                customDrop        = loot.customDrop,
-                items             = loot.Items.SerializeItems(),
-                entityName        = loot.entityName,
-                isEnemyClass      = loot.isEnemyClass
+                heightScale = loot.transform.localScale.y,
+                textureArchive = loot.TextureArchive,
+                textureRecord = loot.TextureRecord,
+                stockedDate = loot.stockedDate,
+                playerOwned = loot.playerOwned,
+                customDrop = loot.customDrop,
+                items = loot.Items.SerializeItems(),
+                entityName = loot.entityName,
+                isEnemyClass = loot.isEnemyClass
             };
 
             return data;
@@ -157,80 +168,93 @@ namespace LocationLoader
 
         public void RestoreSaveData(object dataIn)
         {
-            if (loot == null)
+            if (!loot)
                 return;
-            var data = (LocationLootData_v1)dataIn;
+
+            LocationLootData_v1 data = (LocationLootData_v1)dataIn;
             if (data.loadID != LoadID)
                 return;
 
-            // Compute Y‐offset due to world compensation difference
-            float diffY = GameManager.Instance.StreamingWorld.WorldCompensation.y - data.worldCompensation.y;
-            loot.transform.position = data.currentPosition + new Vector3(0, diffY, 0);
-
-            // Attempt to swap in a custom model; if none, restore billboard
-            var billboard = loot.GetComponent<DaggerfallBillboard>();
-            if (MeshReplacement.SwapCustomFlatGameobject(
-                    data.textureArchive, data.textureRecord,
-                    loot.transform, Vector3.zero, inDungeon: false))
+            // Restore billboard only if this is a billboard-based loot container
+            if (loot.ContainerType == LootContainerTypes.RandomTreasure ||
+                loot.ContainerType == LootContainerTypes.CorpseMarker ||
+                loot.ContainerType == LootContainerTypes.DroppedLoot)
             {
-                if (billboard) Destroy(billboard);
-                Destroy(GetComponent<MeshRenderer>());
-            }
-            else
-            {
-                if (!billboard)
-                    billboard = loot.gameObject.AddComponent<DaggerfallBillboard>();
-                billboard.SetMaterial(data.textureArchive, data.textureRecord);
+                float diffY = GameManager.Instance.StreamingWorld.WorldCompensation.y - data.worldCompensation.y;
+                loot.transform.position = data.currentPosition + new Vector3(0, diffY, 0);
 
-                if (data.heightScale == 0) data.heightScale = 1;
-                if (data.heightScale != billboard.transform.localScale.y)
+                DaggerfallBillboard billboard = loot.GetComponent<DaggerfallBillboard>();
+                // Restore appearance
+                if (MeshReplacement.SwapCustomFlatGameobject(data.textureArchive, data.textureRecord, loot.transform,
+                        Vector3.zero, inDungeon: false))
                 {
-                    float height = billboard.Summary.Size.y * (data.heightScale / billboard.transform.localScale.y);
-                    billboard.transform.Translate(0, (billboard.Summary.Size.y - height) / 2f, 0);
+                    // Use imported model instead of billboard
+                    if (billboard) Destroy(billboard);
+                    Destroy(GetComponent<MeshRenderer>());
+                }
+                else
+                {
+                    // Restore billboard if previously replaced by custom model
+                    // This happens when the record is changed and new model is not provided by mods
+                    if (!billboard)
+                        billboard = loot.transform.gameObject.AddComponent<DaggerfallBillboard>();
+
+                    // Restore billboard appearance
+                    billboard.SetMaterial(data.textureArchive, data.textureRecord);
+
+                    // Fix position if custom scale changed
+                    if (data.heightScale == 0)
+                        data.heightScale = 1;
+                    if (data.heightScale != billboard.transform.localScale.y)
+                    {
+                        float height = billboard.Summary.Size.y * (data.heightScale / billboard.transform.localScale.y);
+                        billboard.transform.Translate(0, (billboard.Summary.Size.y - height) / 2f, 0);
+                    }
                 }
             }
 
-            // Restore inventory
+            // Restore items
             loot.Items.DeserializeItems(data.items);
 
-            // Restore other attributes
-            loot.ContainerType   = data.containerType;
-            loot.ContainerImage  = data.containerImage;
-            loot.TextureArchive  = data.textureArchive;
-            loot.TextureRecord   = data.textureRecord;
-            loot.stockedDate     = data.stockedDate;
-            loot.playerOwned     = data.playerOwned;
-            loot.customDrop      = data.customDrop;
-            loot.entityName      = data.entityName;
-            loot.isEnemyClass    = data.isEnemyClass;
+            // Restore other data
+            loot.ContainerType = data.containerType;
+            loot.ContainerImage = data.containerImage;
+            loot.TextureArchive = data.textureArchive;
+            loot.TextureRecord = data.textureRecord;
+            loot.stockedDate = data.stockedDate;
+            loot.playerOwned = data.playerOwned;
+            loot.customDrop = data.customDrop;
+            loot.entityName = data.entityName;
+            loot.isEnemyClass = data.isEnemyClass;
 
-            // If it’s now empty, remove it
+            // Remove loot container if empty
             if (loot.Items.Count == 0)
                 GameObjectHelper.RemoveLootContainer(loot);
 
             Activated = true;
         }
+
         #endregion
     }
 
-    // ------------------------------------------------------------------------------------
-    // (4) LocationEnemySerializer.  No changes—already public fields if needed.
-    // ------------------------------------------------------------------------------------
     public class LocationEnemySerializer : MonoBehaviour, ISerializableGameObject
     {
         #region Fields
+
         DaggerfallEnemy enemy;
-        DaggerfallEntityBehaviour entityBehaviour;
-        Vector3         worldCompensation;
+        private DaggerfallEntityBehaviour entityBehaviour;
+        Vector3 worldCompensation;
         private LocationSaveDataInterface saveDataInterface;
+
         #endregion
 
         #region Unity
+
         void Awake()
         {
             enemy = GetComponent<DaggerfallEnemy>();
             if (!enemy)
-                throw new Exception("DaggerfallEnemy not found on LocationEnemySerializer GameObject.");
+                throw new Exception("DaggerfallEnemy not found.");
             entityBehaviour = GetComponent<DaggerfallEntityBehaviour>();
             saveDataInterface = LocationModLoader.modObject.GetComponent<LocationSaveDataInterface>();
         }
@@ -246,11 +270,14 @@ namespace LocationLoader
 
         void OnDisable()
         {
-            if (LoadID != 0 && LocationModLoader.modObject != null)
+            if (LoadID != 0)
             {
-                if (IsDead())
-                    saveDataInterface.AddDeadEnemy(this);
-                saveDataInterface.DeregisterActiveSerializer(this);
+                if (LocationModLoader.modObject != null)
+                {
+                    if (IsDead())
+                        saveDataInterface.AddDeadEnemy(this);
+                    saveDataInterface.DeregisterActiveSerializer(this);
+                }
             }
         }
 
@@ -260,13 +287,16 @@ namespace LocationLoader
             UnityEditor.Handles.Label(transform.position + Vector3.up, "LoadID=" + LoadID);
         }
 #endif
+
         #endregion
 
         public bool IsDead()
         {
-            if (!entityBehaviour) return false;
-            var ent = (EnemyEntity)entityBehaviour.Entity;
-            return ent.CurrentHealth <= 0;
+            if (!entityBehaviour)
+                return false;
+
+            EnemyEntity entity = (EnemyEntity)entityBehaviour.Entity;
+            return entity.CurrentHealth <= 0;
         }
 
         public void RefreshWorldCompensation()
@@ -276,187 +306,209 @@ namespace LocationLoader
 
         public void InvalidateSave()
         {
-            if (LoadID != 0 && saveDataInterface != null)
+            if (LoadID != 0)
             {
-                saveDataInterface.DeregisterActiveSerializer(this);
+                if (saveDataInterface)
+                {
+                    // Don't serialize, this is used for when invalid loot is loaded on reused terrain
+                    saveDataInterface.DeregisterActiveSerializer(this);
+                }
+
                 enemy = null;
             }
         }
 
         #region ISerializableGameObject
+
         public ulong LoadID => GetLoadID();
-        public bool  ShouldSave => HasChanged();
+        public bool ShouldSave => HasChanged();
 
         public object GetSaveData()
         {
-            if (!enemy) return null;
-            var eb = GetComponent<DaggerfallEntityBehaviour>();
-            if (eb == null) return null;
+            if (!enemy)
+                return null;
 
-            var entity       = (EnemyEntity)eb.Entity;
-            var motor        = enemy.GetComponent<EnemyMotor>();
-            var senses       = enemy.GetComponent<EnemySenses>();
-            var mobileEnemy  = enemy.GetComponentInChildren<MobileUnit>();
+            // Get entity behaviour
+            DaggerfallEntityBehaviour entityBehaviour = enemy.GetComponent<DaggerfallEntityBehaviour>();
+            if (!entityBehaviour)
+                return null;
 
-            var data = new EnemyData_v1
+            // Create save data
+            EnemyEntity entity = (EnemyEntity)entityBehaviour.Entity;
+            EnemyMotor motor = enemy.GetComponent<EnemyMotor>();
+            EnemySenses senses = enemy.GetComponent<EnemySenses>();
+            var mobileEnemy = enemy.GetComponentInChildren<MobileUnit>();
+            EnemyData_v1 data = new EnemyData_v1
             {
-                loadID                   = LoadID,
-                gameObjectName           = eb.gameObject.name,
-                currentPosition          = enemy.transform.position,
-                localPosition            = enemy.transform.localPosition,
-                currentRotation          = enemy.transform.rotation,
-                worldContext             = entity.WorldContext,
-                worldCompensation        = worldCompensation,
-                entityType               = entity.EntityType,
-                careerName               = entity.Career.Name,
-                careerIndex              = entity.CareerIndex,
-                startingHealth           = entity.MaxHealth,
-                currentHealth            = entity.CurrentHealth,
-                currentFatigue           = entity.CurrentFatigue,
-                currentMagicka           = entity.CurrentMagicka,
-                isHostile                = motor.IsHostile,
-                hasEncounteredPlayer     = senses.HasEncounteredPlayer,
-                isDead                   = entity.CurrentHealth <= 0,
-                questSpawn               = enemy.QuestSpawn,
-                mobileGender             = mobileEnemy.Enemy.Gender,
-                items                    = entity.Items.SerializeItems(),
-                equipTable               = entity.ItemEquipTable.SerializeEquipTable(),
-                instancedEffectBundles   = GetComponent<EntityEffectManager>()
-                                              .GetInstancedBundlesSaveData(),
-                alliedToPlayer           = (mobileEnemy.Enemy.Team == MobileTeams.PlayerAlly),
-                questFoeSpellQueueIndex  = entity.QuestFoeSpellQueueIndex,
-                questFoeItemQueueIndex   = entity.QuestFoeItemQueueIndex,
-                wabbajackActive          = entity.WabbajackActive,
-                team                     = (int)entity.Team + 1,
+                loadID = LoadID,
+                gameObjectName = entityBehaviour.gameObject.name,
+                currentPosition = enemy.transform.position,
+                localPosition = enemy.transform.localPosition,
+                currentRotation = enemy.transform.rotation,
+                worldContext = entity.WorldContext,
+                worldCompensation = worldCompensation,
+                entityType = entity.EntityType,
+                careerName = entity.Career.Name,
+                careerIndex = entity.CareerIndex,
+                startingHealth = entity.MaxHealth,
+                currentHealth = entity.CurrentHealth,
+                currentFatigue = entity.CurrentFatigue,
+                currentMagicka = entity.CurrentMagicka,
+                isHostile = motor.IsHostile,
+                hasEncounteredPlayer = senses.HasEncounteredPlayer,
+                isDead = entity.CurrentHealth <= 0,
+                questSpawn = enemy.QuestSpawn,
+                mobileGender = mobileEnemy.Enemy.Gender,
+                items = entity.Items.SerializeItems(),
+                equipTable = entity.ItemEquipTable.SerializeEquipTable(),
+                instancedEffectBundles = GetComponent<EntityEffectManager>().GetInstancedBundlesSaveData(),
+                alliedToPlayer = mobileEnemy.Enemy.Team == MobileTeams.PlayerAlly,
+                questFoeSpellQueueIndex = entity.QuestFoeSpellQueueIndex,
+                questFoeItemQueueIndex = entity.QuestFoeItemQueueIndex,
+                wabbajackActive = entity.WabbajackActive,
+                team = (int)entity.Team + 1,
                 specialTransformationCompleted = mobileEnemy.SpecialTransformationCompleted
             };
 
-            var qrb = GetComponent<QuestResourceBehaviour>();
-            if (qrb != null)
-                data.questResource = qrb.GetSaveData();
+            // Add quest resource data if present
+            QuestResourceBehaviour questResourceBehaviour = GetComponent<QuestResourceBehaviour>();
+            if (questResourceBehaviour)
+            {
+                data.questResource = questResourceBehaviour.GetSaveData();
+            }
 
             return data;
         }
 
         public void RestoreSaveData(object dataIn)
         {
-            if (!enemy) return;
-            var data = (EnemyData_v1)dataIn;
-            if (data.loadID != LoadID) return;
+            if (!enemy)
+                return;
 
-            var eb   = GetComponent<DaggerfallEntityBehaviour>();
-            var senses = enemy.GetComponent<EnemySenses>();
-            var motor  = enemy.GetComponent<EnemyMotor>();
-            var entity = eb.Entity as EnemyEntity;
-            var mobileEnemy = enemy.GetComponentInChildren<MobileUnit>();
+            EnemyData_v1 data = (EnemyData_v1)dataIn;
+            if (data.loadID != LoadID)
+                return;
+
+            DaggerfallEntityBehaviour entityBehaviour = enemy.GetComponent<DaggerfallEntityBehaviour>();
+            EnemySenses senses = enemy.GetComponent<EnemySenses>();
+            EnemyMotor motor = enemy.GetComponent<EnemyMotor>();
+            EnemyEntity entity = entityBehaviour.Entity as EnemyEntity;
+            MobileUnit mobileEnemy = enemy.GetComponentInChildren<MobileUnit>();
 
             bool genderChanged = false;
             if (data.mobileGender != MobileGender.Unspecified)
             {
-                if      (entity.Gender == Genders.Male   && data.mobileGender == MobileGender.Female) genderChanged = true;
-                else if (entity.Gender == Genders.Female && data.mobileGender == MobileGender.Male)   genderChanged = true;
+                if (entity.Gender == Genders.Male && data.mobileGender == MobileGender.Female)
+                    genderChanged = true;
+                else if (entity.Gender == Genders.Female && data.mobileGender == MobileGender.Male)
+                    genderChanged = true;
             }
 
-            if (entity == null
-                || entity.EntityType != data.entityType
-                || entity.CareerIndex != data.careerIndex
-                || genderChanged)
+            // Restore enemy career or class if different
+            if (entity == null || entity.EntityType != data.entityType || entity.CareerIndex != data.careerIndex ||
+                genderChanged)
             {
-                var setupEnemy = enemy.GetComponent<SetupDemoEnemy>();
-                setupEnemy.ApplyEnemySettings(
-                    data.entityType,
-                    data.careerIndex,
-                    data.mobileGender,
-                    data.isHostile,
-                    alliedToPlayer: data.alliedToPlayer
-                );
+                SetupDemoEnemy setupEnemy = enemy.GetComponent<SetupDemoEnemy>();
+                setupEnemy.ApplyEnemySettings(data.entityType, data.careerIndex, data.mobileGender, data.isHostile,
+                    alliedToPlayer: data.alliedToPlayer);
                 setupEnemy.AlignToGround();
-                entity = eb.Entity as EnemyEntity;
+
+                if (entity == null)
+                    entity = entityBehaviour.Entity as EnemyEntity;
             }
 
+            // Quiesce entity during state restore
             entity.Quiesce = true;
-            eb.gameObject.name = data.gameObjectName;
-            enemy.transform.rotation          = data.currentRotation;
-            entity.QuestFoeSpellQueueIndex    = data.questFoeSpellQueueIndex;
-            entity.QuestFoeItemQueueIndex     = data.questFoeItemQueueIndex;
-            entity.WabbajackActive            = data.wabbajackActive;
+
+            // Restore enemy data
+            entityBehaviour.gameObject.name = data.gameObjectName;
+            enemy.transform.rotation = data.currentRotation;
+            entity.QuestFoeSpellQueueIndex = data.questFoeSpellQueueIndex;
+            entity.QuestFoeItemQueueIndex = data.questFoeItemQueueIndex;
+            entity.WabbajackActive = data.wabbajackActive;
             entity.Items.DeserializeItems(data.items);
             entity.ItemEquipTable.DeserializeEquipTable(data.equipTable, entity.Items);
-            entity.MaxHealth                  = data.startingHealth;
+            entity.MaxHealth = data.startingHealth;
             entity.SetHealth(data.currentHealth, true);
             entity.SetFatigue(data.currentFatigue, true);
             entity.SetMagicka(data.currentMagicka, true);
-            if (data.team > 0)
-                entity.Team = (MobileTeams)(data.team - 1);
-            motor.IsHostile         = data.isHostile;
+            int team = data.team;
+            if (team > 0) // Added 1 to made backwards compatible. 0 = no team saved
+                entity.Team = (MobileTeams)(team - 1);
+            motor.IsHostile = data.isHostile;
             senses.HasEncounteredPlayer = data.hasEncounteredPlayer;
 
+            // Restore enemy position and migrate to floating y support for exteriors
+            // Need to get relative difference between current and serialized world compensation to get actual y position
             float diffY = GameManager.Instance.StreamingWorld.WorldCompensation.y - data.worldCompensation.y;
             enemy.transform.position = data.currentPosition + new Vector3(0, diffY, 0);
 
+            // Disable dead enemies
             if (data.isDead)
-                eb.gameObject.SetActive(false);
+            {
+                entityBehaviour.gameObject.SetActive(false);
+            }
 
+            // Restore quest resource link
             enemy.QuestSpawn = data.questSpawn;
             if (enemy.QuestSpawn)
             {
-                var qrb = eb.gameObject.AddComponent<QuestResourceBehaviour>();
-                qrb.RestoreSaveData(data.questResource);
-                if (qrb.QuestUID == 0 || qrb.TargetSymbol == null)
+                // Add QuestResourceBehaviour to GameObject
+                QuestResourceBehaviour questResourceBehaviour =
+                    entityBehaviour.gameObject.AddComponent<QuestResourceBehaviour>();
+                questResourceBehaviour.RestoreSaveData(data.questResource);
+
+                // Destroy QuestResourceBehaviour if no actual quest properties are restored from save
+                if (questResourceBehaviour.QuestUID == 0 || questResourceBehaviour.TargetSymbol == null)
                 {
                     enemy.QuestSpawn = false;
-                    Destroy(qrb);
+                    Destroy(questResourceBehaviour);
                 }
             }
 
-            GetComponent<EntityEffectManager>()
-                .RestoreInstancedBundleSaveData(data.instancedEffectBundles);
+            // Restore instanced effect bundles
+            GetComponent<EntityEffectManager>().RestoreInstancedBundleSaveData(data.instancedEffectBundles);
 
+            // Restore special transformation state if completed
             if (data.specialTransformationCompleted && mobileEnemy)
+            {
                 mobileEnemy.SetSpecialTransformationCompleted();
+            }
 
+            // Resume entity
             entity.Quiesce = false;
         }
+
         #endregion
 
-        #region Helpers
+        #region Private Methods
+
         bool HasChanged()
         {
-            return (enemy != null);
+            if (!enemy)
+                return false;
+
+            // Always serialize enemy
+            return true;
         }
 
         ulong GetLoadID()
         {
-            return (enemy ? enemy.LoadID : 0);
+            if (!enemy)
+                return 0;
+
+            return enemy.LoadID;
         }
+
         #endregion
     }
 
-    // ------------------------------------------------------------------------------------
-    // (5) Our new “fake‐dungeon” save‐data struct (v2):
-    // ------------------------------------------------------------------------------------
-    [fsObject("v2")]
-    public struct LocationSaveData_v2
-    {
-        // --- original v1 arrays ---
-        public ulong[]              clearedEnemies;
-        public EnemyData_v1[]       activeEnemies;
-        public LocationLootData_v1[] lootContainers;
-
-        // --- new v2 fields for fake‐dungeon support ---
-        public bool     wasInFakeDungeon;
-        public int      fakeWorldX;
-        public int      fakeWorldZ;
-        public int      realWorldX;
-        public int      realWorldZ;
-        public Vector3  exitReturnPos;
-    }
-
-    // ------------------------------------------------------------------------------------
-    // (6) The main IHasModSaveData implementer.
-    // ------------------------------------------------------------------------------------
     public class LocationSaveDataInterface : MonoBehaviour, IHasModSaveData
     {
+        public bool   wasInFakeDungeon;
+        public int    fakeWorldX, fakeWorldZ, realWorldX, realWorldZ;
+        public Vector3 exitReturnPos;
+
         public static ulong ToObjectLoadId(ulong locationId, int objectId)
         {
             return (locationId << 16) | (uint)objectId;
@@ -467,24 +519,28 @@ namespace LocationLoader
             return objectLoadId >> 16;
         }
 
-        // Internal dictionaries to hold serialized data
-        Dictionary<ulong, LocationLootData_v1>       savedLoot = new Dictionary<ulong, LocationLootData_v1>();
-        Dictionary<ulong, LocationLootSerializer>     activeLootSerializers = new Dictionary<ulong, LocationLootSerializer>();
-        Dictionary<ulong, LocationEnemySerializer>    activeEnemySerializers = new Dictionary<ulong, LocationEnemySerializer>();
-        HashSet<ulong>                               clearedEnemies = new HashSet<ulong>();
+        Dictionary<ulong, LocationLootData_v1> savedLoot = new Dictionary<ulong, LocationLootData_v1>();
+
+        Dictionary<ulong, LocationLootSerializer> activeLootSerializers =
+            new Dictionary<ulong, LocationLootSerializer>();
+
+        Dictionary<ulong, LocationEnemySerializer> activeEnemySerializers =
+            new Dictionary<ulong, LocationEnemySerializer>();
+
+        private HashSet<ulong> clearedEnemies = new HashSet<ulong>();
 
         #region Unity
 
         void OnEnable()
         {
             StreamingWorld.OnFloatingOriginChange += StreamingWorld_OnFloatingOriginChange;
-            SaveLoadManager.OnStartLoad         += SaveLoadManager_OnStartLoad;
+            SaveLoadManager.OnStartLoad += SaveLoadManager_OnStartLoad;
         }
 
         void OnDisable()
         {
             StreamingWorld.OnFloatingOriginChange -= StreamingWorld_OnFloatingOriginChange;
-            SaveLoadManager.OnStartLoad         -= SaveLoadManager_OnStartLoad;
+            SaveLoadManager.OnStartLoad -= SaveLoadManager_OnStartLoad;
         }
 
         private void SaveLoadManager_OnStartLoad(SaveData_v1 saveData)
@@ -495,14 +551,17 @@ namespace LocationLoader
         private void StreamingWorld_OnFloatingOriginChange()
         {
             foreach (var loot in activeLootSerializers.Values)
+            {
                 loot.RefreshWorldCompensation();
+            }
+
             foreach (var enemy in activeEnemySerializers.Values)
+            {
                 enemy.RefreshWorldCompensation();
+            }
         }
 
         #endregion
-
-        #region Loot / Enemy Registration
 
         public void SerializeLoot(LocationLootSerializer serializer)
         {
@@ -513,6 +572,7 @@ namespace LocationLoader
         {
             if (!savedLoot.TryGetValue(serializer.LoadID, out LocationLootData_v1 value))
                 return false;
+
             serializer.RestoreSaveData(value);
             return true;
         }
@@ -547,29 +607,35 @@ namespace LocationLoader
             activeEnemySerializers.Remove(serializer.LoadID);
         }
 
-        #endregion
-
-        #region Helpers to Flush/Reload Instances
 
         void FlushActiveInstances()
         {
+            // We always serialize active loot instances, even if expired
             foreach (var loot in activeLootSerializers.Values)
+            {
                 if (loot.Activated)
                     SerializeLoot(loot);
+            }
 
             foreach (var enemy in activeEnemySerializers.Values)
+            {
                 if (enemy.IsDead())
                     AddDeadEnemy(enemy);
+            }
         }
 
         void ReloadActiveInstances(EnemyData_v1[] enemies)
         {
-            var currentLoot = activeLootSerializers.Values.ToArray();
-            foreach (var loot in currentLoot)
+            // Copy collection since empty loot might get deregistered in the process
+            var currentSerializers = activeLootSerializers.Values.ToArray();
+            foreach (var loot in currentSerializers)
+            {
                 TryDeserializeLoot(loot);
+            }
 
-            var currentEnemies = activeEnemySerializers.Values.ToArray();
-            foreach (var activeSerializer in currentEnemies)
+            // Copy collection
+            var enemySerializers = activeEnemySerializers.Values.ToArray();
+            foreach (LocationEnemySerializer activeSerializer in enemySerializers)
             {
                 if (clearedEnemies.Contains(activeSerializer.LoadID))
                 {
@@ -579,131 +645,24 @@ namespace LocationLoader
                 {
                     EnemyData_v1 enemyData = enemies.FirstOrDefault(e => e.loadID == activeSerializer.LoadID);
                     if (enemyData != null)
+                    {
                         activeSerializer.RestoreSaveData(enemyData);
+                    }
                     else
-                        Debug.LogWarning($"Location loader: Enemy data not found for loadID {activeSerializer.LoadID}");
+                    {
+                        Debug.LogWarning(
+                            $"Location loader: Enemy data not found for loadId '{activeSerializer.LoadID}'");
+                    }
                 }
             }
         }
 
-        #endregion
-
-        #region IHasModSaveData Implementation
-
-        public Type SaveDataType => typeof(LocationSaveData_v2);
-
-        public object NewSaveData()
-        {
-            return new LocationSaveData_v2
-            {
-                clearedEnemies    = Array.Empty<ulong>(),
-                activeEnemies     = Array.Empty<EnemyData_v1>(),
-                lootContainers    = Array.Empty<LocationLootData_v1>(),
-                wasInFakeDungeon  = false,
-                fakeWorldX        = 0,
-                fakeWorldZ        = 0,
-                realWorldX        = 0,
-                realWorldZ        = 0,
-                exitReturnPos     = Vector3.zero
-            };
-        }
-
-        public object GetSaveData()
-        {
-            FlushActiveInstances();
-
-            var thresholdValue = MakeLootThresholdExpirationValue();
-            var lootToSave = savedLoot.Values.Where(
-                loot => activeLootSerializers.ContainsKey(loot.loadID)
-                        || loot.stockedDate >= thresholdValue
-            );
-
-            var fakeData = FakeDungeonSaveDataHandler.Instance.CurrentData;
-
-            var data = new LocationSaveData_v2
-            {
-                // v1 fields:
-                clearedEnemies    = clearedEnemies.ToArray(),
-                activeEnemies     = activeEnemySerializers.Values
-                                       .Select(serializer => (EnemyData_v1)serializer.GetSaveData())
-                                       .ToArray(),
-                lootContainers    = lootToSave.ToArray(),
-
-                // v2 fields:
-                wasInFakeDungeon  = fakeData.wasInFakeDungeon,
-                fakeWorldX        = fakeData.fakeWorldX,
-                fakeWorldZ        = fakeData.fakeWorldZ,
-                realWorldX        = fakeData.realWorldX,
-                realWorldZ        = fakeData.realWorldZ,
-                exitReturnPos     = fakeData.exitReturnPos
-            };
-
-            return data;
-        }
-
-        public void RestoreSaveData(object saveData)
-        {
-            var data = (LocationSaveData_v2)saveData;
-
-            // Restore v1 dictionaries:
-            savedLoot.Clear();
-            foreach (var loot in data.lootContainers)
-                savedLoot[loot.loadID] = loot;
-
-            clearedEnemies.Clear();
-            foreach (var cleared in data.clearedEnemies)
-                clearedEnemies.Add(cleared);
-
-            ReloadActiveInstances(data.activeEnemies);
-
-            // Copy fake‐dungeon fields into the singleton:
-            var fakeData = FakeDungeonSaveDataHandler.Instance.CurrentData;
-            fakeData.wasInFakeDungeon = data.wasInFakeDungeon;
-            fakeData.fakeWorldX       = data.fakeWorldX;
-            fakeData.fakeWorldZ       = data.fakeWorldZ;
-            fakeData.realWorldX       = data.realWorldX;
-            fakeData.realWorldZ       = data.realWorldZ;
-            fakeData.exitReturnPos    = data.exitReturnPos;
-
-            // If we were saved inside a fake dungeon, DFU will now respawn in “realWorldX/realWorldZ.”
-            // After that respawn finishes, we snap back to fakeWorldX/fakeWorldZ + exitReturnPos.
-            if (data.wasInFakeDungeon)
-            {
-                var gps = GameManager.Instance.PlayerGPS;
-                gps.WorldX = data.realWorldX;
-                gps.WorldZ = data.realWorldZ;
-
-                PlayerEnterExit.OnRespawnerComplete += OnRespawnedIntoFakeDungeon;
-            }
-        }
-
-        void OnRespawnedIntoFakeDungeon()
-        {
-            PlayerEnterExit.OnRespawnerComplete -= OnRespawnedIntoFakeDungeon;
-
-            var fakeData = FakeDungeonSaveDataHandler.Instance.CurrentData;
-            var gps      = GameManager.Instance.PlayerGPS;
-
-            gps.WorldX = fakeData.fakeWorldX;
-            gps.WorldZ = fakeData.fakeWorldZ;
-
-            var gpsGO = gps.gameObject;
-            gpsGO.transform.position = fakeData.exitReturnPos;
-
-            var adv = GameObject.Find("PlayerAdvanced");
-            if (adv) adv.transform.position = fakeData.exitReturnPos + Vector3.up * 0.1f;
-        }
-
-        #endregion
-
-        #region Utility
-
+        // Returns the oldest date that we preserve in save
         public static int MakeLootThresholdExpirationValue()
         {
-            var time = DaggerfallUnity.Instance.WorldTime.Now;
-            int thresholdYear = time.Year;
-            int thresholdDay  = time.DayOfYear; // 1–360
-
+            DaggerfallDateTime time = DaggerfallUnity.Instance.WorldTime.Now;
+            var thresholdYear = time.Year;
+            var thresholdDay = time.DayOfYear; // 1-indexed, 1-360
             if (thresholdDay <= LocationLoader.LootExpirationDays)
             {
                 thresholdYear -= 1;
@@ -717,37 +676,91 @@ namespace LocationLoader
             return thresholdYear * 1000 + thresholdDay;
         }
 
-        #endregion
-    }
+        /// <summary>
+        /// The type of a custom class that holds save data and optionally use <see cref="FullSerializer.fsObjectAttribute"/> for versioning.
+        /// </summary>
+        public Type SaveDataType => typeof(LocationSaveData_v1);
 
-    // ------------------------------------------------------------------------------------
-    // (7) A small singleton to hold “fake‐dungeon” fields at runtime.
-    // ------------------------------------------------------------------------------------
-    [Serializable]
-    public class FakeDungeonSaveData
-    {
-        public bool    wasInFakeDungeon = false;
-        public int     fakeWorldX       = 0;
-        public int     fakeWorldZ       = 0;
-        public int     realWorldX       = 0;
-        public int     realWorldZ       = 0;
-        public Vector3 exitReturnPos    = Vector3.zero;
-    }
-
-    public class FakeDungeonSaveDataHandler
-    {
-        static FakeDungeonSaveDataHandler instance;
-        public static FakeDungeonSaveDataHandler Instance
+        /// <summary>
+        /// Makes a new instance of <see cref="SaveDataType"/> with default values.
+        /// </summary>
+        public object NewSaveData()
         {
-            get
+            return new LocationSaveData_v1
             {
-                if (instance == null)
-                    instance = new FakeDungeonSaveDataHandler();
-                return instance;
-            }
+                lootContainers  = Array.Empty<LocationLootData_v1>(),
+                activeEnemies   = Array.Empty<EnemyData_v1>(),
+                clearedEnemies  = Array.Empty<ulong>(),
+                dungeonData     = new LLDungeonSaveData
+                {
+                    wasInFakeDungeon = false,
+                    fakeWorldX       = 0,
+                    fakeWorldZ       = 0,
+                    realWorldX       = 0,
+                    realWorldZ       = 0,
+                    exitReturnPos    = Vector3.zero
+                }
+            };
         }
 
-        public FakeDungeonSaveData CurrentData = new FakeDungeonSaveData();
+        /// <summary>
+        /// Makes a new instance of <see cref="SaveDataType"/> for the current state or null if there is nothing to save.
+        /// </summary>
+        public object GetSaveData()
+        {
+            FlushActiveInstances();
+
+            // We save active loot and preserve inactive loot for some time
+            var data = new LocationSaveData_v1
+            {
+                lootContainers = savedLoot.Values
+                    .Where(loot =>
+                        activeLootSerializers.ContainsKey(loot.loadID) || loot.stockedDate >= MakeLootThresholdExpirationValue()
+                    ).ToArray(),
+
+                activeEnemies = activeEnemySerializers
+                    .Values
+                    .Select(serializer => (EnemyData_v1)serializer.GetSaveData())
+                    .ToArray(),
+
+                clearedEnemies = clearedEnemies.ToArray(),
+
+                // ← HERE: copy your current dungeon state into dungeonData
+                dungeonData = new LLDungeonSaveData
+                {
+                    wasInFakeDungeon = this.wasInFakeDungeon,
+                    fakeWorldX       = this.fakeWorldX,
+                    fakeWorldZ       = this.fakeWorldZ,
+                    realWorldX       = this.realWorldX,
+                    realWorldZ       = this.realWorldZ,
+                    exitReturnPos    = this.exitReturnPos
+                }
+            };
+
+            return data;
+        }
+
+        /// <summary>
+        /// Restores retrieved data when a save is loaded.
+        /// </summary>
+        /// <param name="saveData">An instance of <see cref="SaveDataType"/>.</param>
+        public void RestoreSaveData(object saveData)
+        {
+            var data = (LocationSaveData_v1)saveData;
+
+            // restore loot/enemies as before…
+            savedLoot = data.lootContainers.ToDictionary(loot => loot.loadID);
+            foreach (ulong id in data.clearedEnemies)
+                clearedEnemies.Add(id);
+            ReloadActiveInstances(data.activeEnemies);
+
+            // ← HERE: restore your dungeon fields
+            this.wasInFakeDungeon = data.dungeonData.wasInFakeDungeon;
+            this.fakeWorldX       = data.dungeonData.fakeWorldX;
+            this.fakeWorldZ       = data.dungeonData.fakeWorldZ;
+            this.realWorldX       = data.dungeonData.realWorldX;
+            this.realWorldZ       = data.dungeonData.realWorldZ;
+            this.exitReturnPos    = data.dungeonData.exitReturnPos;
+        }
     }
 }
-
