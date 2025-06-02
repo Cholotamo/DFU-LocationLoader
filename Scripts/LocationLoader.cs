@@ -392,13 +392,15 @@ namespace LocationLoader
                             // Add a NON-TRIGGER BoxCollider (remove `isTrigger = true`)
                             var bc = triggerGO.AddComponent<BoxCollider>();
                             bc.isTrigger = false; // <<— do NOT make it a trigger
-                            bc.size = door.size;
+                            bc.size = new Vector3(door.size.z, door.size.y, door.size.x * 0.1f);
+
 
                             // Attach your popup script
                             var bd = triggerGO.AddComponent<BarredDoor>();
                             bd.hasDungeon      = true;
                             bd.dungeonRegion   = 43;
                             bd.dungeonLocation = 161;
+                            bd.tooltipText = loc.name;
                             bd.staticDoor      = door;
                         }
                     }

@@ -36,6 +36,9 @@ namespace LocationLoader
         bool _listeningInterior = false;
         bool _listeningExterior = false;
 
+        [Tooltip("What to show when the player hovers over this door.")]
+        public string tooltipText;
+
         BoxCollider _bc;
         private LocationSaveDataInterface _saveInterface;
 
@@ -48,7 +51,16 @@ namespace LocationLoader
             else
                 _bc.isTrigger = true;
 
-            var gps       = GameManager.Instance.PlayerGPS;
+            var playerGO = GameManager.Instance.PlayerEntityBehaviour?.gameObject;
+            if (playerGO != null)
+            {
+                // Assume the player has a CharacterController (it usually does in Daggerfall Unity)
+                var playerCollider = playerGO.GetComponent<Collider>();
+                if (playerCollider != null)
+                {
+                    Physics.IgnoreCollision(_bc, playerCollider, true);
+                }
+            }
 
             // fetch the single SaveDataInterface instance
             _saveInterface = LocationModLoader.modObject.GetComponent<LocationSaveDataInterface>();
@@ -70,8 +82,8 @@ namespace LocationLoader
                 {
                     if (hit.collider == _bc)
                     {
-                        Debug.Log("Tooltip callback fired for BarredDoor at distance " + hit.distance);
-                        return "Barred Door";
+                        //Debug.Log("Tooltip callback fired for BarredDoor at distance " + hit.distance);
+                        return tooltipText;
                     }
                     return null;
                 };
@@ -86,6 +98,9 @@ namespace LocationLoader
 
         void Update()
         {
+            if (DaggerfallUI.UIManager.WindowCount > 0)
+                return;
+
             if (!Input.GetMouseButtonDown(0))
                 return;
 
