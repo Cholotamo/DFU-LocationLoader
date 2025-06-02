@@ -19,6 +19,9 @@ namespace LocationLoader
 	    private static Mod VEMod;
 	    public static bool VEModEnabled;
 
+	    public static Mod TooltipMod;
+	    public static bool TooltipModEnabled;
+
         [Invoke(StateManager.StateTypes.Start, 0)]
         public static void Init(InitParams initParams)
         {
@@ -64,6 +67,12 @@ namespace LocationLoader
 		    if (VEMod != null && VEMod.Enabled)
 		    {
 			    VEModEnabled = true;
+		    }
+
+		    TooltipMod = ModManager.Instance.GetModFromGUID("88e77a95-fca0-4c13-a3b9-55ddf40ee01e");
+		    if (TooltipMod != null && TooltipMod.Enabled)
+		    {
+			    TooltipModEnabled = true;
 		    }
 
             // It's okay if other mods override us, they better provide a compatibility patch though

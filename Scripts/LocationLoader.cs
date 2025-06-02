@@ -365,44 +365,41 @@ namespace LocationLoader
                     var doorCollection = rmbBlock.GetComponent<DaggerfallStaticDoors>();
                     if (doorCollection != null && doorCollection.Doors != null)
                     {
-                        // 0) First, disable all the DF-driven doors so they don’t respond at all
+                        // 0) Disable all DF‐driven doors so they don’t respond
                         var doors = doorCollection.Doors;
                         for (int i = 0; i < doors.Length; i++)
-                        {
                             doors[i].doorType = DoorTypes.None;
-                        }
                         doorCollection.Doors = doors;
 
-                        // 1) Now re-iterate and add your “barred” triggers in the right spot
+                        // 1) Re‐iterate and add your “barred” triggers
                         foreach (var door in doorCollection.Doors)
                         {
-                            // Compute the local-to-block position
+                            // Compute the local‐to‐block position
                             Vector3 localDoorPos = door.buildingMatrix.MultiplyPoint3x4(door.centre);
-                            // Transform to world-space
-                            Vector3 worldCentre  = rmbBlock.transform.TransformPoint(localDoorPos);
+                            // Transform to world‐space
+                            Vector3 worldCentre = rmbBlock.transform.TransformPoint(localDoorPos);
 
-                            // Compute normal in world-space for orientation
-                            Vector3 localNormal  = door.buildingMatrix.MultiplyVector(door.normal);
-                            Vector3 worldNormal  = rmbBlock.transform.rotation * localNormal;
+                            // Compute normal for orientation
+                            Vector3 localNormal = door.buildingMatrix.MultiplyVector(door.normal);
+                            Vector3 worldNormal = rmbBlock.transform.rotation * localNormal;
 
                             // Create your trigger GameObject
                             var triggerGO = new GameObject("BarredDoorTrigger");
-                            triggerGO.transform.parent   = rmbBlock.transform;
+                            triggerGO.transform.parent = rmbBlock.transform;
                             triggerGO.transform.position = worldCentre;
                             triggerGO.transform.rotation = Quaternion.LookRotation(worldNormal, Vector3.up);
 
-                            // Add the BoxCollider
+                            // Add a NON-TRIGGER BoxCollider (remove `isTrigger = true`)
                             var bc = triggerGO.AddComponent<BoxCollider>();
-                            bc.isTrigger = true;
-                            // door.size is already the (thickness, height, width) in DF units
+                            bc.isTrigger = false; // <<— do NOT make it a trigger
                             bc.size = door.size;
 
                             // Attach your popup script
                             var bd = triggerGO.AddComponent<BarredDoor>();
-                            bd.hasDungeon        = true;
-                            bd.dungeonRegion     = 43;
-                            bd.dungeonLocation   = 161;
-                            bd.staticDoor      = door; 
+                            bd.hasDungeon      = true;
+                            bd.dungeonRegion   = 43;
+                            bd.dungeonLocation = 161;
+                            bd.staticDoor      = door;
                         }
                     }
                     else

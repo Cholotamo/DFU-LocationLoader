@@ -7,6 +7,7 @@ using DaggerfallWorkshop;
 using DaggerfallWorkshop.Game;
 using DaggerfallWorkshop.Game.Serialization;
 using DaggerfallWorkshop.Game.UserInterfaceWindows;
+using DaggerfallWorkshop.Game.Utility.ModSupport;
 using DaggerfallWorkshop.Game.Entity;
 using DaggerfallWorkshop.Utility.AssetInjection;
 
@@ -55,30 +56,70 @@ namespace LocationLoader
                 Debug.LogError("BarredDoor: LocationSaveDataInterface not found on modObject!");
         }
 
-        void Update()
+        void Start()
         {
-            // Perform custom raycast on Left-click to detect triggers (including this one's BoxCollider)
-            if (Input.GetMouseButtonDown(0))
+            // 1) Make sure your BoxCollider is NOT a trigger:
+            _bc = GetComponent<BoxCollider>();
+            _bc.isTrigger = false; // <-- must be non-trigger so Physics.Raycast can hit it
+
+            // 2) Register your callback at DoorActivationDistance:
+            if (LocationModLoader.TooltipModEnabled && LocationModLoader.TooltipMod != null)
             {
-                Camera cam = Camera.main;
-                if (cam == null) return;
-
-                Ray ray = cam.ScreenPointToRay(Input.mousePosition);
-                RaycastHit[] hits = Physics.RaycastAll(
-                    ray,
-                    100f,
-                    Physics.DefaultRaycastLayers,
-                    QueryTriggerInteraction.Collide);
-
-                Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
-
-                foreach (var hit in hits)
+                float maxDist = PlayerActivate.DoorActivationDistance;  // ~5 meters for doors
+                Func<RaycastHit,string> getText = (hit) =>
                 {
                     if (hit.collider == _bc)
                     {
-                        Activate(hit);
-                        break;
+                        Debug.Log("Tooltip callback fired for BarredDoor at distance " + hit.distance);
+                        return "Barred Door";
                     }
+                    return null;
+                };
+
+                ModManager.Instance.SendModMessage(
+                    LocationModLoader.TooltipMod.Title,           // ← use Title (or FileName), not GUID
+                    "RegisterCustomTooltip",
+                    Tuple.Create(maxDist, getText),
+                    null);
+            }
+        }
+
+        void Update()
+        {
+            if (!Input.GetMouseButtonDown(0))
+                return;
+
+            Camera cam = Camera.main;
+            if (cam == null) return;
+
+            // Create a ray from the camera through the mouse cursor:
+            Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+
+            // Use a small SphereCast radius (e.g. 0.25 units) instead of a perfectly
+            // thin ray. This makes clicks “forgive” slight aiming errors.
+            float maxDistance = 100f;
+            float sphereRadius = 0.25f;
+
+            RaycastHit[] hits = Physics.SphereCastAll(
+                ray,
+                sphereRadius,
+                maxDistance,
+                Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Collide);
+
+            if (hits.Length == 0)
+                return;
+
+            // Sort by distance so that the closest hit comes first
+            Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+            foreach (var hit in hits)
+            {
+                // If this hit is our BoxCollider, fire Activate(...)
+                if (hit.collider == _bc)
+                {
+                    Activate(hit);
+                    break;
                 }
             }
         }
