@@ -37,9 +37,16 @@ namespace LocationLoader
     }
 
     [fsObject("v1")]
+    public struct EnemyClearedData_v1
+    {
+        public ulong loadID;
+        public int deathDate; // encoded: year*1000 + dayOfYear (matching loot.storage style)
+    }
+
+    [fsObject("v1")]
     public struct LocationSaveData_v1
     {
-        public ulong[] clearedEnemies;
+        public EnemyClearedData_v1[] clearedEnemies;
         public EnemyData_v1[] activeEnemies;
         public LocationLootData_v1[] lootContainers;
     }
@@ -511,7 +518,9 @@ namespace LocationLoader
         Dictionary<ulong, LocationEnemySerializer> activeEnemySerializers =
             new Dictionary<ulong, LocationEnemySerializer>();
 
-        private HashSet<ulong> clearedEnemies = new HashSet<ulong>();
+        private Dictionary<ulong, int> clearedEnemies = new Dictionary<ulong, int>();
+
+        public const int EnemyRespawnDays = 7;
 
         #region Unity
 
@@ -573,12 +582,42 @@ namespace LocationLoader
 
         public void AddDeadEnemy(LocationEnemySerializer serializer)
         {
-            clearedEnemies.Add(serializer.LoadID);
+            int deathDate = DaggerfallLoot.CreateStockedDate(DaggerfallUnity.Instance.WorldTime.Now);
+            clearedEnemies[serializer.LoadID] = deathDate;
         }
 
         public bool IsEnemyDead(ulong loadID)
         {
-            return clearedEnemies.Contains(loadID);
+            if (!clearedEnemies.TryGetValue(loadID, out int deathDate))
+                return false;
+
+            int threshold = MakeEnemyThresholdExpirationValue();
+            if (deathDate < threshold)
+            {
+                // expired — remove and allow respawn
+                clearedEnemies.Remove(loadID);
+                return false;
+            }
+
+            return true;
+        }
+
+        public static int MakeEnemyThresholdExpirationValue()
+        {
+            DaggerfallDateTime time = DaggerfallUnity.Instance.WorldTime.Now;
+            var thresholdYear = time.Year;
+            var thresholdDay = time.DayOfYear; // 1-indexed, 1-360
+            if (thresholdDay <= LocationSaveDataInterface.EnemyRespawnDays)
+            {
+                thresholdYear -= 1;
+                thresholdDay = 360 + thresholdDay - LocationSaveDataInterface.EnemyRespawnDays;
+            }
+            else
+            {
+                thresholdDay -= LocationSaveDataInterface.EnemyRespawnDays;
+            }
+
+            return thresholdYear * 1000 + thresholdDay;
         }
 
         public void RegisterActiveSerializer(LocationEnemySerializer serializer)
@@ -621,7 +660,7 @@ namespace LocationLoader
             var enemySerializers = activeEnemySerializers.Values.ToArray();
             foreach (LocationEnemySerializer activeSerializer in enemySerializers)
             {
-                if (clearedEnemies.Contains(activeSerializer.LoadID))
+                if (IsEnemyDead(activeSerializer.LoadID))
                 {
                     Destroy(activeSerializer.gameObject);
                 }
@@ -672,9 +711,9 @@ namespace LocationLoader
         {
             LocationSaveData_v1 defaultData = new LocationSaveData_v1
             {
-                lootContainers = Array.Empty<LocationLootData_v1>(),
+                clearedEnemies = Array.Empty<EnemyClearedData_v1>(),
                 activeEnemies = Array.Empty<EnemyData_v1>(),
-                clearedEnemies = Array.Empty<ulong>()
+                lootContainers = Array.Empty<LocationLootData_v1>()
             };
             return defaultData;
         }
@@ -692,12 +731,23 @@ namespace LocationLoader
                 loot => activeLootSerializers.ContainsKey(loot.loadID) || loot.stockedDate >= thresholdValue
                 );
 
+            var clearedList = new List<EnemyClearedData_v1>(clearedEnemies.Count);
+            int enemyThreshold = MakeEnemyThresholdExpirationValue();
+            foreach (var kvp in clearedEnemies)
+            {
+                if (kvp.Value >= enemyThreshold)
+                {
+                    clearedList.Add(new EnemyClearedData_v1() { loadID = kvp.Key, deathDate = kvp.Value });
+                }
+                // else skip expired cleared entry (don't write it to save)
+            }
+
             LocationSaveData_v1 data = new LocationSaveData_v1
             {
-                lootContainers = lootToSave.ToArray(),
+                clearedEnemies = clearedList.ToArray(),
                 activeEnemies = activeEnemySerializers.Values
                     .Select(serializer => (EnemyData_v1)serializer.GetSaveData()).ToArray(),
-                clearedEnemies = clearedEnemies.ToArray()
+                lootContainers = lootToSave.ToArray()
             };
 
             return data;
@@ -711,10 +761,21 @@ namespace LocationLoader
         {
             LocationSaveData_v1 data = (LocationSaveData_v1)saveData;
 
-            savedLoot = data.lootContainers.ToDictionary(loot => loot.loadID);
-            foreach (ulong clearedEnemy in data.clearedEnemies)
-                clearedEnemies.Add(clearedEnemy);
+            clearedEnemies.Clear();
+            if (data.clearedEnemies != null)
+            {
+                int enemyThreshold = MakeEnemyThresholdExpirationValue();
+                foreach (var entry in data.clearedEnemies)
+                {
+                    if (entry.deathDate >= enemyThreshold)
+                    {
+                        clearedEnemies[entry.loadID] = entry.deathDate;
+                    }
+                    // expired entries are ignored on load
+                }
+            }
 
+            savedLoot = data.lootContainers.ToDictionary(loot => loot.loadID);
             ReloadActiveInstances(data.activeEnemies);
         }
     }
